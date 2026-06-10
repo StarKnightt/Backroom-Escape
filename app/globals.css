@@ -90,6 +90,18 @@ body {
   100% { opacity: 0; transform: translate(-50%, -8px); }
 }
 
+/* centered objective announcement — fades in, holds, fades out */
+.objective-pop {
+  animation: objective-pop 5.2s ease-out forwards;
+}
+
+@keyframes objective-pop {
+  0% { opacity: 0; transform: translate(-50%, 10px); }
+  7% { opacity: 1; transform: translate(-50%, 0); }
+  84% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -6px); }
+}
+
 /* "rotate your device" phone glyph */
 .phone-spin {
   animation: phone-spin 2.2s ease-in-out infinite;

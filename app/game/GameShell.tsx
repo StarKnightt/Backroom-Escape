@@ -35,15 +35,43 @@ export default function GameShell() {
   const [stats, setStats] = useState({ pages: 0, seconds: 0 });
   const [toast, setToast] = useState<string | null>(null);
   const [resuming, setResuming] = useState(false);
+  const [banner, setBanner] = useState<{ title: string; hint: string } | null>(null);
   const isTouch = useMediaQuery("(pointer: coarse)");
   const portrait = useMediaQuery("(orientation: portrait)");
+
+  const bannerKindRef = useRef("");
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTouchRef = useRef(false);
+  useEffect(() => {
+    isTouchRef.current = isTouch;
+  }, [isTouch]);
 
   const callbacksRef = useRef<EngineCallbacks>({
     onState: (s) => {
       setState(s);
       if (s !== "paused") setResuming(false); // clears "RESUMING…" feedback
     },
-    onHud: (h) => setHud(h),
+    onHud: (h) => {
+      setHud(h);
+      // Big objective banner whenever the objective *kind* changes (run
+      // start, all pages found, door opened) — not on every counter tick.
+      // New players were missing the tiny corner text entirely.
+      const kind = h.objective.split("—")[0].trim();
+      if (kind !== bannerKindRef.current) {
+        bannerKindRef.current = kind;
+        const hint =
+          kind === "COLLECT THE PAGES"
+            ? isTouchRef.current
+              ? "PINNED TO THE WALLS — GET CLOSE, TAP TAKE PAGE"
+              : "PINNED TO THE WALLS — PRESS [E] TO TAKE THEM"
+            : kind === "FIND THE EXIT DOOR"
+              ? "ALL PAGES FOUND — A DOOR HAS UNLOCKED SOMEWHERE"
+              : "THROUGH THE DOOR — RUN";
+        setBanner({ title: h.objective, hint });
+        if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+        bannerTimerRef.current = setTimeout(() => setBanner(null), 5200);
+      }
+    },
     onPageText: (lines) => setPageLines(lines),
     onStats: (s) => setStats(s),
     onToast: (m) => setToast(m),
@@ -82,15 +110,21 @@ export default function GameShell() {
     setResuming(true);
     engineRef.current?.resume();
   };
-  const retry = () => {
-    autoStartRef.current = true;
+  /** Tear down the current run and remount a fresh engine (new maze). */
+  const resetRun = (autoStart: boolean) => {
+    autoStartRef.current = autoStart;
     setBooted(false);
     setState("idle");
     setHud(INITIAL_HUD);
     setPageLines(null);
+    setBanner(null);
+    bannerKindRef.current = ""; // next run re-announces the objective
+    if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
     engineRef.current = null;
     setRunId((r) => r + 1);
   };
+  const retry = () => resetRun(true);
+  const exitToMenu = () => resetRun(false);
 
   const mmss = useMemo(() => {
     const m = Math.floor(stats.seconds / 60);
@@ -139,10 +173,25 @@ export default function GameShell() {
           {/* crosshair */}
           <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-100/40" />
 
-          {/* objective */}
-          <div className="font-elite absolute left-5 top-4 text-[13px] tracking-[0.25em] text-amber-100/50">
+          {/* objective — bright + glowing so new players actually see it */}
+          <div className="font-elite absolute left-5 top-4 text-sm tracking-[0.25em] text-amber-50/95 [text-shadow:0_0_14px_rgba(255,225,150,0.5)]">
             {hud.objective}
           </div>
+
+          {/* objective banner — announces goal changes front and center */}
+          {banner && (
+            <div className="objective-pop absolute left-1/2 top-[28%] border-y border-amber-100/15 bg-black/45 px-10 py-4 text-center shadow-[0_0_50px_rgba(0,0,0,0.55)] backdrop-blur-[2px]">
+              <div className="font-elite text-[11px] tracking-[0.55em] text-amber-100/55">
+                OBJECTIVE
+              </div>
+              <div className="font-elite mt-2 whitespace-nowrap text-2xl tracking-[0.3em] text-amber-50 [text-shadow:0_0_26px_rgba(255,230,160,0.7)]">
+                {banner.title}
+              </div>
+              <div className="font-elite mt-3 text-[12px] tracking-[0.28em] text-amber-100/80">
+                {banner.hint}
+              </div>
+            </div>
+          )}
 
           {/* active cheats — always visible while any cheat is on */}
           {hud.cheats && (
@@ -213,9 +262,11 @@ export default function GameShell() {
             BACKROOMS
           </h1>
           <p className="font-elite mt-6 max-w-md text-center text-sm leading-6 text-amber-100/45">
-            you noclipped out of reality. mono-yellow halls, damp carpet, the
-            buzz of fluorescent light — and something that walks when the
-            lights die. find all 8 pages. find the door. get out.
+            you tripped through a wrong corner of reality, and the world
+            healed shut behind you. someone was here before — they left 8
+            pages pinned to these walls. take them all and the door will
+            show itself. and when the lights start to die, don&apos;t let
+            it hear you walk.
           </p>
 
           {isTouch ? (
@@ -269,6 +320,15 @@ export default function GameShell() {
           >
             {resuming ? "RESUMING…" : "RESUME"}
           </ArmedButton>
+          <ArmedButton
+            onClick={exitToMenu}
+            className="font-elite mt-4 border border-amber-100/15 px-10 py-2.5 text-sm tracking-[0.4em] text-amber-100/45 transition-all hover:border-red-300/50 hover:text-red-200/80 disabled:opacity-50"
+          >
+            EXIT TO MENU
+          </ArmedButton>
+          <p className="font-elite mt-3 text-[10px] tracking-[0.25em] text-amber-100/20">
+            THE RUN IS LOST. THE PAGES STAY.
+          </p>
         </Overlay>
       )}
 

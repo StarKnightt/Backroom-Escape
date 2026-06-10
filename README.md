@@ -9,8 +9,10 @@ image or audio files in this project.
 
 ## The game
 
-You noclipped out of reality into Level 0: an endless office of mono-yellow
-wallpaper, damp carpet and buzzing fluorescent light.
+You tripped through a wrong corner of reality, and the world healed shut
+behind you. Level 0: an endless office of mono-yellow wallpaper, damp
+carpet and buzzing fluorescent light. Someone was here before you — they
+left pages pinned to the walls.
 
 - **Find all 8 journal pages** pinned to the walls.
 - **Find the exit door** (look for the green glow) — it only opens once you

@@ -28,6 +28,14 @@ await page.waitForFunction(() => {
 await page.click("button");
 await new Promise((r) => setTimeout(r, 1000));
 
+// --- objective banner announces the goal at run start
+const bannerUp = await page.evaluate(() => {
+  const t = document.body.innerText;
+  return t.includes("OBJECTIVE") && t.includes("PINNED TO THE WALLS");
+});
+console.log("OBJECTIVE BANNER:", bannerUp ? "OK" : "FAILED");
+await page.screenshot({ path: "scripts/shots/f0-objective.png" });
+
 // --- collect a page
 await page.evaluate(() => {
   const e = window.__backrooms;
@@ -84,6 +92,29 @@ await page.waitForFunction(
 );
 console.log("RETRY: OK");
 await page.screenshot({ path: "scripts/shots/f3-retry.png" });
+
+// --- pause -> exit to menu -> fresh ENTER available
+await page.evaluate(() => window.__backrooms.pause());
+await page.waitForFunction(() => document.body.innerText.includes("PAUSED"), { timeout: 5000 });
+await page.waitForFunction(() => {
+  const b = [...document.querySelectorAll("button")].find((x) =>
+    x.textContent.includes("EXIT TO MENU"),
+  );
+  return b && !b.disabled;
+}, { timeout: 5000 });
+await page.screenshot({ path: "scripts/shots/f4-pause-exit.png" });
+await page.evaluate(() => {
+  [...document.querySelectorAll("button")]
+    .find((x) => x.textContent.includes("EXIT TO MENU"))
+    .click();
+});
+await page.waitForFunction(() => {
+  const t = document.body.innerText;
+  const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("ENTER"));
+  return t.includes("BACKROOMS") && b && !b.disabled;
+}, { timeout: 30000 });
+const menuState = await page.evaluate(() => window.__backrooms.state);
+console.log("EXIT TO MENU:", menuState === "idle" ? "OK" : `FAILED (state=${menuState})`);
 
 console.log("=== ISSUES (" + errors.length + ") ===");
 for (const e of errors.slice(0, 20)) console.log(e);
