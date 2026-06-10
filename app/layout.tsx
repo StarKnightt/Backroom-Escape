@@ -1,12 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Special_Elite } from "next/font/google";
+import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
-const specialElite = Special_Elite({
+// Special Elite (Apache 2.0), self-hosted: builds kept failing on flaky
+// fetches to fonts.gstatic.com, and bundling kills that dependency for
+// Vercel too.
+const specialElite = localFont({
+  src: "./fonts/SpecialElite.woff2",
   variable: "--font-elite",
   weight: "400",
-  subsets: ["latin"],
+  display: "swap",
+  // Turbopack dev fails decompressing this woff2 when computing the
+  // size-adjusted fallback ("get_font_fallbacks ... compression error").
+  // Skip it and declare fallbacks by hand — it's a decorative font.
+  adjustFontFallback: false,
+  fallback: ["Courier New", "monospace"],
 });
 
 export const metadata: Metadata = {

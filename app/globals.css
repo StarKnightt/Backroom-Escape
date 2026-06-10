@@ -66,6 +66,57 @@ body {
   67% { opacity: 0.3; }
 }
 
+/* ------------------------------------------------------------------ */
+/* VHS menu — camcorder tape aesthetic                                  */
+/* ------------------------------------------------------------------ */
+
+/* chromatic aberration + occasional tape jitter on the title */
+.vhs-title {
+  text-shadow:
+    -2.5px 0 0 rgba(255, 70, 55, 0.5),
+    2.5px 0 0 rgba(80, 225, 255, 0.38),
+    0 0 30px rgba(255, 220, 140, 0.25);
+  animation:
+    flicker 6.5s infinite,
+    vhs-jitter 3.8s steps(1) infinite;
+}
+
+@keyframes vhs-jitter {
+  0%, 93%, 100% { transform: translate(0, 0) skewX(0deg); }
+  94% { transform: translate(-2px, 1px) skewX(-1.4deg); }
+  95.5% { transform: translate(1.5px, -1px) skewX(0.8deg); }
+  97% { transform: translate(-1px, 0) skewX(0deg); }
+}
+
+.rec-dot {
+  animation: rec-blink 1.6s steps(1) infinite;
+}
+
+@keyframes rec-blink {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0.12; }
+}
+
+/* horizontal tracking distortion band rolling down the screen */
+.tracking-band {
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(255, 255, 255, 0.045) 30%,
+    rgba(255, 255, 255, 0.085) 50%,
+    rgba(255, 255, 255, 0.045) 70%,
+    transparent
+  );
+  animation: tracking-roll 9s linear infinite;
+}
+
+@keyframes tracking-roll {
+  0% { transform: translateY(-130px); opacity: 0; }
+  6% { opacity: 1; }
+  60% { transform: translateY(100vh); opacity: 1; }
+  61%, 100% { transform: translateY(100vh); opacity: 0; }
+}
+
 .glitch-text {
   animation: glitch-skew 4s infinite;
 }

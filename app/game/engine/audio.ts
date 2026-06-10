@@ -561,6 +561,86 @@ export class GameAudio {
     ping.stop(t + 0.5);
   }
 
+  /** A dead fixture somewhere down the maze arcs back to life — go look. */
+  buzz() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+
+    // mains hum swelling in — routed through the reverb only, so it sits
+    // "somewhere out there" instead of in your ear
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.value = 119;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 850;
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(0.05, t + 0.7);
+    og.gain.setValueAtTime(0.05, t + 2.4);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 3.6);
+    osc.connect(lp);
+    lp.connect(og);
+    og.connect(this.wet);
+    osc.start(t);
+    osc.stop(t + 3.7);
+
+    // arc strikes
+    for (let i = 0; i < 5; i++) {
+      const at = t + 0.15 + Math.random() * 2.6;
+      const src = this.noiseSource();
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 2200 + Math.random() * 2000;
+      bp.Q.value = 3;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.05, at);
+      g.gain.exponentialRampToValueAtTime(0.001, at + 0.05);
+      src.connect(bp);
+      bp.connect(g);
+      g.connect(this.wet);
+      src.start(at, Math.random());
+      src.stop(at + 0.07);
+    }
+  }
+
+  /** Almond water going down — three gulps and a swallow. */
+  drink() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      const at = t + i * 0.27;
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(205 - i * 16, at);
+      osc.frequency.exponentialRampToValueAtTime(88, at + 0.15);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(0.085, at + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.2);
+      osc.connect(g);
+      g.connect(this.sfx);
+      osc.start(at);
+      osc.stop(at + 0.24);
+    }
+    const src = this.noiseSource();
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 680;
+    bp.Q.value = 1.2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.035, t + 0.35);
+    g.gain.linearRampToValueAtTime(0.0001, t + 0.95);
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(this.sfx);
+    src.start(t, Math.random());
+    src.stop(t + 1);
+  }
+
   death() {
     if (!this.ctx) return;
     this.screech();

@@ -32,6 +32,41 @@ await new Promise((r) => setTimeout(r, 1000));
 const art = await page.evaluate(() => window.__backrooms.level.artSpots.length);
 console.log("WALL ART:", art >= 10 ? `OK (${art})` : `LOW (${art})`);
 
+// --- exploration content generated
+const extras = await page.evaluate(() => ({
+  water: window.__backrooms.items.waters.length,
+  signs: window.__backrooms.level.falseExits.length,
+  beacons: window.__backrooms.level.fixtures.filter((f) => f.state === "flicker").length,
+  hueAnomalies: window.__backrooms.level.fixtures.filter((f) => f.base[0] !== 1.9).length,
+}));
+const extrasOk =
+  extras.water === 4 && extras.signs >= 4 && extras.beacons >= 8 && extras.hueAnomalies >= 2;
+console.log("EXPLORATION:", extrasOk ? "OK" : "FAILED", JSON.stringify(extras));
+
+// --- almond water drink restores stamina
+await page.evaluate(() => {
+  const e = window.__backrooms;
+  const w = e.items.waters[0].group.position;
+  e.player.pos.set(w.x + 1.1, 0, w.z);
+  e.player.yaw = Math.atan2(1.1, 0); // forward = (-sin,-cos) → face -X
+  e.player.pitch = -0.85;
+  e.player.stamina = 0.15;
+});
+await new Promise((r) => setTimeout(r, 300));
+await page.keyboard.down("KeyE");
+await new Promise((r) => setTimeout(r, 80));
+await page.keyboard.up("KeyE");
+await new Promise((r) => setTimeout(r, 400));
+const drank = await page.evaluate(() => ({
+  taken: window.__backrooms.items.waters[0].taken,
+  stamina: window.__backrooms.player.stamina,
+}));
+console.log(
+  "ALMOND WATER:",
+  drank.taken && drank.stamina > 0.95 ? "OK" : "FAILED",
+  JSON.stringify(drank),
+);
+
 // --- starter page lands a short walk from spawn (findability)
 const starterDist = await page.evaluate(() => {
   const e = window.__backrooms;

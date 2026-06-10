@@ -29,7 +29,6 @@ export interface EngineCallbacks {
   onToast: (msg: string) => void;
 }
 
-const FIXTURE_BASE: [number, number, number] = [1.9, 1.75, 1.35];
 const POOL_SIZE = 12;
 const UP = new THREE.Vector3(0, 1, 0);
 /** keys the browser must not act on while playing (Ctrl+S, space scroll…) */
@@ -66,6 +65,8 @@ export class Engine {
   private lightPool: THREE.PointLight[] = [];
   private fixtureMult: Float32Array;
   private fixtureBurst = new Map<number, number>();
+  /** dead fixtures temporarily sputtering alive — index -> seconds left */
+  private fixtureFlare = new Map<number, number>();
   private nextAmbientEvent = 18;
   private hudTimer = 0;
   private lastPrompt: string | null = null;
@@ -468,6 +469,15 @@ export class Engine {
       this.fearSpike = Math.min(1, this.fearSpike + 0.22);
       if (this.items.collected === 1) this.entity.activate();
       this.pushHud(true);
+    } else if (hit.type === "water") {
+      this.items.drinkWater(hit.index);
+      this.player.restoreStamina();
+      // the lore is true: it calms you down
+      this.fearSpike = Math.max(0, this.fearSpike - 0.5);
+      this.fear = Math.max(0, this.fear - 0.3);
+      this.audio.drink();
+      this.toast("STAMINA RESTORED — YOUR HEART SLOWS");
+      this.pushHud(true);
     } else if (hit.type === "door" && this.items.allCollected && !this.items.exitOpen) {
       this.items.openExit();
       this.audio.zap();
@@ -607,7 +617,7 @@ export class Engine {
   private updateInteractionPrompt(camDir: THREE.Vector3) {
     const hit = this.items.findInteractable(this.player.camera.position, camDir);
     const prompt = hit
-      ? hit.type === "page" || (hit.type === "door" && this.items.allCollected)
+      ? hit.type !== "door" || this.items.allCollected
         ? `[E] ${hit.label}`
         : hit.label
       : null;
@@ -624,18 +634,37 @@ export class Engine {
     const playerPos = this.player.pos;
     const entityActive = this.entity.state !== "dormant";
 
-    // Random ambient scare: a nearby light chokes for a few seconds.
+    // Random ambient events. Two flavors:
+    //  - choke: a nearby light strangles for a few seconds (scare)
+    //  - flare: a DEAD light down some corridor sputters alive, then dies
+    //    again (lure — something to walk toward)
     this.nextAmbientEvent -= dt;
     if (this.nextAmbientEvent <= 0 && this.state === "playing") {
-      this.nextAmbientEvent = randRange(Math.random, 18, 45);
-      const near = fixtures.filter(
-        (f) => f.state === "on" && f.pos.distanceToSquared(playerPos) < 169,
-      );
-      if (near.length > 0 && this.entity.state !== "chase") {
-        const f = near[Math.floor(Math.random() * near.length)];
-        this.fixtureBurst.set(f.index, 2.5 + Math.random() * 2);
-        this.audio.zap();
-        this.fearSpike = Math.min(1, this.fearSpike + 0.12);
+      this.nextAmbientEvent = randRange(Math.random, 16, 38);
+      if (this.entity.state !== "chase") {
+        const wantFlare = Math.random() < 0.45;
+        const dead = wantFlare
+          ? fixtures.filter((f) => {
+              if (f.state !== "off") return false;
+              const d = f.pos.distanceToSquared(playerPos);
+              return d > 100 && d < 484; // 10-22m: visible, not adjacent
+            })
+          : [];
+        if (dead.length > 0) {
+          const f = dead[Math.floor(Math.random() * dead.length)];
+          this.fixtureFlare.set(f.index, 4.5 + Math.random() * 3);
+          this.audio.buzz();
+        } else {
+          const near = fixtures.filter(
+            (f) => f.state === "on" && f.pos.distanceToSquared(playerPos) < 169,
+          );
+          if (near.length > 0) {
+            const f = near[Math.floor(Math.random() * near.length)];
+            this.fixtureBurst.set(f.index, 2.5 + Math.random() * 2);
+            this.audio.zap();
+            this.fearSpike = Math.min(1, this.fearSpike + 0.12);
+          }
+        }
       }
     }
 
@@ -659,6 +688,19 @@ export class Engine {
         }
         default:
           mult = 0.97 + Math.sin(t * 40 + f.phase) * 0.03;
+      }
+
+      // Flare events: a dead panel arcs back to life, stuttering.
+      const flare = this.fixtureFlare.get(f.index);
+      if (flare !== undefined) {
+        if (flare <= 0) this.fixtureFlare.delete(f.index);
+        else {
+          this.fixtureFlare.set(f.index, flare - dt);
+          // bangs on like a real tube, stutters, then sputters out
+          const n = Math.sin(t * 19 + f.phase) + Math.sin(t * 47 + f.phase * 3);
+          const dieOff = Math.min(1, flare * 1.2);
+          mult = Math.max(mult, (n > -0.3 ? 0.9 : 0.12) * dieOff);
+        }
       }
 
       // Burst events override.
@@ -691,13 +733,14 @@ export class Engine {
         this.fixtureMult[f.index] = mult;
         this.level.setFixtureColor(
           f.index,
-          FIXTURE_BASE[0] * mult,
-          FIXTURE_BASE[1] * mult,
-          FIXTURE_BASE[2] * mult,
+          f.base[0] * mult,
+          f.base[1] * mult,
+          f.base[2] * mult,
         );
       }
 
-      if (mult > 0.04 && f.state !== "off") candidates.push({ f, d: dSq, mult });
+      if (mult > 0.04 && (f.state !== "off" || this.fixtureFlare.has(f.index)))
+        candidates.push({ f, d: dSq, mult });
     }
 
     // Assign the real point lights to the nearest glowing fixtures.
@@ -708,6 +751,8 @@ export class Engine {
       if (c) {
         light.position.set(c.f.pos.x, c.f.pos.y - 0.18, c.f.pos.z);
         light.intensity = 10.5 * c.mult;
+        // light color tracks the panel so anomaly zones wash the room
+        light.color.setRGB(c.f.base[0] * 0.53, c.f.base[1] * 0.53, c.f.base[2] * 0.54);
       } else {
         light.intensity = 0;
       }

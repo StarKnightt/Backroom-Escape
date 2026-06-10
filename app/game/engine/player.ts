@@ -289,6 +289,12 @@ export class Player {
     this.onFlashlightToggle?.(this.flashlightOn);
   }
 
+  /** Almond water: legs come back instantly. */
+  restoreStamina() {
+    this.stamina = 1;
+    this.exhausted = false;
+  }
+
   onMouseDelta(dx: number, dy: number) {
     // Chromium's pointer lock occasionally fires a single garbage event with
     // a huge delta (esp. on Windows + high-poll-rate mice) which snaps the

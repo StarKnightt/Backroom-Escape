@@ -36,6 +36,7 @@ export default function GameShell() {
   const [toast, setToast] = useState<string | null>(null);
   const [resuming, setResuming] = useState(false);
   const [banner, setBanner] = useState<{ title: string; hint: string } | null>(null);
+  const [showCredits, setShowCredits] = useState(false);
   const isTouch = useMediaQuery("(pointer: coarse)");
   const portrait = useMediaQuery("(orientation: portrait)");
 
@@ -118,6 +119,7 @@ export default function GameShell() {
     setHud(INITIAL_HUD);
     setPageLines(null);
     setBanner(null);
+    setShowCredits(false);
     bannerKindRef.current = ""; // next run re-announces the objective
     if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
     engineRef.current = null;
@@ -254,53 +256,93 @@ export default function GameShell() {
 
       {/* --------------------------- START MENU --------------------------- */}
       {state === "idle" && (
-        <Overlay>
-          <div className="flicker-slow font-elite text-[11px] tracking-[0.6em] text-amber-200/40">
-            LEVEL 0
-          </div>
-          <h1 className="font-elite flicker mt-3 text-6xl tracking-[0.18em] text-amber-100/90 [text-shadow:0_0_30px_rgba(255,220,140,0.25)] sm:text-7xl">
-            BACKROOMS
-          </h1>
-          <p className="font-elite mt-6 max-w-md text-center text-sm leading-6 text-amber-100/45">
-            you tripped through a wrong corner of reality, and the world
-            healed shut behind you. someone was here before — they left 8
-            pages pinned to these walls. take them all and the door will
-            show itself. and when the lights start to die, don&apos;t let
-            it hear you walk.
-          </p>
-
-          {isTouch ? (
-            <div className="font-elite mt-8 grid grid-cols-2 gap-x-10 gap-y-1.5 text-[12px] tracking-[0.2em] text-amber-100/35">
-              <span>LEFT STICK — WALK</span>
-              <span>RIGHT SIDE — LOOK</span>
-              <span>STICK FULLY OUT — RUN</span>
-              <span>BUTTONS — TORCH / SNEAK</span>
-            </div>
+        <Overlay vhs>
+          {showCredits ? (
+            <>
+              <h2 className="vhs-title font-elite text-3xl tracking-[0.35em] text-amber-50/90">
+                CREDITS
+              </h2>
+              <div className="font-elite mt-8 flex max-w-md flex-col items-center gap-3 text-center text-[13px] leading-6 tracking-[0.12em] text-amber-100/55">
+                <p>a game by StarKnightt</p>
+                <p className="text-amber-100/35">
+                  every wall, texture, sound and scream in here is generated
+                  by code. there are no asset files. there is no level file.
+                  each run builds a maze that has never existed before.
+                </p>
+                <p className="text-amber-100/35">
+                  built with three.js · next.js · webaudio
+                </p>
+              </div>
+              <div className="mt-7 flex items-center gap-8">
+                <GitHubBadge />
+                <XBadge />
+              </div>
+              <ArmedButton
+                onClick={() => setShowCredits(false)}
+                className="font-elite mt-10 border border-amber-100/30 px-10 py-2.5 text-sm tracking-[0.4em] text-amber-100/70 transition-all hover:border-amber-100/80 hover:bg-amber-100/5"
+              >
+                BACK
+              </ArmedButton>
+            </>
           ) : (
-            <div className="font-elite mt-8 grid grid-cols-2 gap-x-10 gap-y-1.5 text-[12px] tracking-[0.2em] text-amber-100/35">
-              <span>WASD — WALK</span>
-              <span>MOUSE — LOOK</span>
-              <span>SHIFT — RUN</span>
-              <span>C — SNEAK</span>
-              <span>F — FLASHLIGHT</span>
-              <span>E — INTERACT</span>
-              <span>ESC — PAUSE</span>
-            </div>
+            <>
+              <div className="flicker-slow font-elite text-[11px] tracking-[0.6em] text-amber-200/40">
+                LEVEL 0
+              </div>
+              <h1 className="vhs-title font-elite mt-3 text-6xl tracking-[0.18em] text-amber-50/95 sm:text-7xl">
+                BACKROOMS
+              </h1>
+              <p className="font-elite mt-6 max-w-md text-center text-sm leading-6 text-amber-100/45">
+                you tripped through a wrong corner of reality, and the world
+                healed shut behind you. someone was here before — they left 8
+                pages pinned to these walls. take them all and the door will
+                show itself. and when the lights start to die, don&apos;t let
+                it hear you walk.
+              </p>
+
+              {isTouch ? (
+                <div className="font-elite mt-7 grid grid-cols-2 gap-x-10 gap-y-1.5 text-[12px] tracking-[0.2em] text-amber-100/35">
+                  <span>LEFT STICK — WALK</span>
+                  <span>RIGHT SIDE — LOOK</span>
+                  <span>STICK FULLY OUT — RUN</span>
+                  <span>BUTTONS — TORCH / SNEAK</span>
+                </div>
+              ) : (
+                <div className="font-elite mt-7 grid grid-cols-2 gap-x-10 gap-y-1.5 text-[12px] tracking-[0.2em] text-amber-100/35">
+                  <span>WASD — WALK</span>
+                  <span>MOUSE — LOOK</span>
+                  <span>SHIFT — RUN</span>
+                  <span>C — SNEAK</span>
+                  <span>F — FLASHLIGHT</span>
+                  <span>E — INTERACT</span>
+                  <span>ESC — PAUSE</span>
+                </div>
+              )}
+
+              <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
+                <button
+                  onClick={begin}
+                  disabled={!booted}
+                  className="font-elite group flex items-center gap-3 bg-amber-100/90 px-10 py-3 text-base tracking-[0.4em] text-black transition-all hover:bg-amber-50 hover:shadow-[0_0_30px_rgba(255,230,170,0.25)] disabled:opacity-40"
+                >
+                  <svg viewBox="0 0 10 12" className="h-3 w-3 fill-current" aria-hidden="true">
+                    <path d="M0 0 L10 6 L0 12 Z" />
+                  </svg>
+                  {booted ? "ENTER" : "LOADING TAPE…"}
+                </button>
+                <button
+                  onClick={() => setShowCredits(true)}
+                  className="font-elite border border-amber-100/40 px-8 py-3 text-base tracking-[0.3em] text-amber-100/75 transition-all hover:border-amber-100/80 hover:bg-amber-100/5 hover:text-amber-100"
+                >
+                  CREDITS
+                </button>
+              </div>
+
+              <p className="font-elite mt-6 text-[11px] tracking-[0.3em] text-amber-100/25">
+                HEADPHONES STRONGLY RECOMMENDED
+              </p>
+            </>
           )}
-
-          <button
-            onClick={begin}
-            disabled={!booted}
-            className="font-elite group mt-10 border border-amber-100/30 px-12 py-3 text-lg tracking-[0.5em] text-amber-100/80 transition-all hover:border-amber-100/80 hover:bg-amber-100/5 hover:text-amber-100 hover:[text-shadow:0_0_20px_rgba(255,220,140,0.6)] disabled:opacity-40"
-          >
-            {booted ? "ENTER" : "GENERATING…"}
-          </button>
-
-          <p className="font-elite mt-6 text-[11px] tracking-[0.3em] text-amber-100/25">
-            HEADPHONES STRONGLY RECOMMENDED
-          </p>
-
-          <GitHubBadge className="mt-7" />
         </Overlay>
       )}
 
@@ -329,6 +371,10 @@ export default function GameShell() {
           <p className="font-elite mt-3 text-[10px] tracking-[0.25em] text-amber-100/20">
             THE RUN IS LOST. THE PAGES STAY.
           </p>
+          <div className="mt-8 flex items-center gap-8">
+            <GitHubBadge />
+            <XBadge />
+          </div>
         </Overlay>
       )}
 
@@ -426,6 +472,32 @@ function GitHubBadge({
         className="h-4 w-4 fill-current opacity-70 transition-opacity group-hover:opacity-100"
       >
         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+      </svg>
+      {label}
+    </a>
+  );
+}
+
+function XBadge({
+  className = "",
+  label = "@Star_Knight12",
+}: {
+  className?: string;
+  label?: string;
+}) {
+  return (
+    <a
+      href="https://x.com/Star_Knight12"
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`font-elite group flex items-center gap-2 text-[11px] tracking-[0.2em] text-amber-100/30 transition-all hover:text-amber-100/80 hover:[text-shadow:0_0_14px_rgba(255,220,140,0.4)] ${className}`}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        className="h-3.5 w-3.5 fill-current opacity-70 transition-opacity group-hover:opacity-100"
+      >
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z" />
       </svg>
       {label}
     </a>
@@ -569,20 +641,30 @@ function useMediaQuery(query: string) {
 function Overlay({
   children,
   tint = "dark",
+  vhs = false,
 }: {
   children: React.ReactNode;
   tint?: "dark" | "red" | "light";
+  vhs?: boolean;
 }) {
-  const bg =
-    tint === "red"
+  const bg = vhs
+    ? "bg-black"
+    : tint === "red"
       ? "bg-[#180404]/90"
       : tint === "light"
         ? "bg-[#15130c]/85"
         : "bg-[#0a0905]/92";
   return (
     <div className={`absolute inset-0 z-10 ${bg}`}>
+      {vhs && <VHSNoise />}
       <div className="crt-grain pointer-events-none absolute inset-0 opacity-[0.07]" />
       <div className="scanlines pointer-events-none absolute inset-0 opacity-[0.05]" />
+      {vhs && (
+        <>
+          <div className="tracking-band pointer-events-none absolute inset-x-0 h-32" />
+          <RecOSD />
+        </>
+      )}
       {/* Scroll layer: on short screens (phone landscape) the menu is taller
           than the viewport — center when it fits, scroll when it doesn't.
           (Flex centering directly on the overflow container would clip the
@@ -593,5 +675,67 @@ function Overlay({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Analog tape snow: a tiny canvas of random grayscale redrawn ~12fps and
+ * stretched across the screen. Cheap (20k pixels) and reads far more like
+ * a real camcorder than any CSS trick.
+ */
+function VHSNoise() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current!;
+    const W = 320, H = 180;
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+    const img = ctx.createImageData(W, H);
+    const d = img.data;
+    let raf = 0;
+    let last = 0;
+    const draw = (t: number) => {
+      raf = requestAnimationFrame(draw);
+      if (t - last < 80) return; // ~12fps — chunky, like real snow
+      last = t;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = Math.random() * 255;
+        d[i] = d[i + 1] = d[i + 2] = v;
+        d[i + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <canvas
+      ref={ref}
+      className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.11] [image-rendering:pixelated]"
+    />
+  );
+}
+
+/** Camcorder on-screen display: blinking REC + a ticking tape counter. */
+function RecOSD() {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setSecs((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60).toString().padStart(2, "0");
+  const s = (secs % 60).toString().padStart(2, "0");
+  return (
+    <>
+      <div className="font-elite pointer-events-none absolute left-5 top-4 flex items-center gap-2 text-[12px] tracking-[0.3em] text-amber-50/70">
+        <span className="rec-dot h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(255,40,40,0.8)]" />
+        REC
+      </div>
+      <div className="font-elite pointer-events-none absolute right-5 top-4 text-[12px] tracking-[0.25em] text-amber-50/50">
+        SP {h}:{m}:{s}
+      </div>
+    </>
   );
 }

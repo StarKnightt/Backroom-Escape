@@ -17,11 +17,20 @@ left pages pinned to the walls.
 - **Find all 8 journal pages** pinned to the walls. The other scrawls —
   stick figures, spirals, tallies, red handprints — are from whoever was
   here before you. They are not instructions. Probably.
+- **Follow the dying lights.** The fixture nearest every page sputters.
+  One page always hangs a short walk from where you wake up.
 - **Find the exit door** (look for the green glow) — it only opens once you
-  hold every page.
+  hold every page. The red EXIT signs hanging in the corridors are lying.
+- **Drink the almond water.** Four bottles are abandoned somewhere in the
+  maze — full stamina, and your heart stops hammering for a while.
 - **Avoid the Wanderer.** It roams the halls, kills the lights around it,
   and hunts by sound and sight. If you stare at it, it freezes… for a while.
   If it screams — run.
+- Sometimes a dead light far down a corridor arcs back on for a few
+  seconds. Whether you walk toward it is up to you.
+- Deep in the maze there are pockets where the fluorescents burn the wrong
+  color — a sick red, a pale hospital green. Nothing about those places is
+  different. Probably.
 
 ### Controls
 

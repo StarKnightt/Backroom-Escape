@@ -537,6 +537,84 @@ export function makeExitSignTexture(): THREE.CanvasTexture {
   return tex(canvas, { srgb: true, repeat: false });
 }
 
+/**
+ * The OTHER exit signs — red, grimy, pointing at nothing. They lie.
+ * `arrow` flips the chevron so different signs send you different ways.
+ */
+export function makeFalseExitSignTexture(
+  seed: number,
+  arrow: -1 | 1,
+): THREE.CanvasTexture {
+  const W = 256, H = 96;
+  const rng = mulberry32(seed * 7 + 13);
+  const { canvas, ctx } = makeCanvas(W, H);
+  ctx.fillStyle = "#160505";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = "#ff2a22";
+  ctx.font = "bold 56px Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("EXIT", W / 2 - arrow * 22, H / 2 + 4);
+
+  // chevron arrow
+  ctx.beginPath();
+  const ax = arrow === 1 ? W - 46 : 46;
+  ctx.moveTo(ax - arrow * 14, H / 2 - 20);
+  ctx.lineTo(ax + arrow * 12, H / 2 + 2);
+  ctx.lineTo(ax - arrow * 14, H / 2 + 24);
+  ctx.lineWidth = 9;
+  ctx.strokeStyle = "#ff2a22";
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(255,50,40,0.45)";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(4, 4, W - 8, H - 8);
+
+  // grime streaks + a dead patch in the lettering — these have been here a while
+  ctx.globalCompositeOperation = "destination-out";
+  for (let i = 0; i < 26; i++) {
+    ctx.fillStyle = `rgba(0,0,0,${0.25 + rng() * 0.5})`;
+    const x = rng() * W, y = rng() * H;
+    ctx.fillRect(x, y, 2 + rng() * 14, 1 + rng() * 3);
+  }
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "rgba(20,4,4,0.55)";
+  ctx.fillRect(rng() * W * 0.7, 0, 14 + rng() * 30, H);
+
+  return tex(canvas, { srgb: true, repeat: false });
+}
+
+/** Wrap-around label for an almond water bottle — the lore-famous pickup. */
+export function makeWaterLabelTexture(seed: number): THREE.CanvasTexture {
+  const W = 256, H = 128;
+  const rng = mulberry32(seed * 11 + 5);
+  const { canvas, ctx } = makeCanvas(W, H);
+
+  // aged cream label — kept dim so the torch doesn't clip it to white
+  ctx.fillStyle = "#a89878";
+  ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 60; i++) {
+    ctx.fillStyle = `rgba(120,100,60,${0.04 + rng() * 0.08})`;
+    ctx.fillRect(rng() * W, rng() * H, 2 + rng() * 22, 1 + rng() * 4);
+  }
+
+  ctx.strokeStyle = "#5d4d2c";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(7, 7, W - 14, H - 14);
+
+  ctx.fillStyle = "#3c2f18";
+  ctx.textAlign = "center";
+  ctx.font = "bold 30px Georgia, serif";
+  ctx.fillText("ALMOND", W / 2, 52);
+  ctx.fillText("WATER", W / 2, 86);
+  ctx.font = "italic 13px Georgia, serif";
+  ctx.fillStyle = "#6b5733";
+  ctx.fillText("· bottled where it is always 3 pm ·", W / 2, 110);
+
+  return tex(canvas, { srgb: true, repeat: false });
+}
+
 /* --------------------------------------------- */
 /*  ENTITY SKIN — wet, mottled, light-swallowing  */
 /* --------------------------------------------- */

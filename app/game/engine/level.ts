@@ -5,6 +5,7 @@ import {
   makeCeilingMaps,
   makeDoorTexture,
   makeExitSignTexture,
+  makeFalseExitSignTexture,
   makeLightPanelTexture,
   makeWallArtTexture,
   makeWallMaps,
@@ -26,6 +27,8 @@ export interface Fixture {
   /** 0..1 — how strongly the entity's presence is suppressing this light */
   aura: number;
   phase: number;
+  /** HDR panel color — mono-yellow except inside hue anomaly zones */
+  base: [number, number, number];
 }
 
 export interface PageSpot {
@@ -89,6 +92,10 @@ export class Level {
   pageSpots: PageSpot[] = [];
   /** wall scrawls left by whoever was here before — pos + outward normal */
   artSpots: PageSpot[] = [];
+  /** almond water bottles on the floor — exploration rewards */
+  waterSpots: THREE.Vector3[] = [];
+  /** red ceiling EXIT signs that point at nothing */
+  falseExits: { pos: THREE.Vector3; yaw: number }[] = [];
   spawn = new THREE.Vector3();
   spawnCell = { x: 0, z: 0 };
   entitySpawnCell = { x: 0, z: 0 };
@@ -394,6 +401,47 @@ export class Level {
       });
     }
 
+    // 8.7) Almond water — four bottles, mid-to-deep maze, spaced apart.
+    // Something to stumble onto that makes wandering worth it.
+    const waterCandidates = shuffle(
+      rng,
+      reachable.slice(Math.floor(reachable.length * 0.18)),
+    );
+    const waterCells: { x: number; z: number }[] = [];
+    for (const cand of waterCandidates) {
+      if (this.waterSpots.length >= 4) break;
+      if (chosen.some((p) => Math.abs(p.x - cand.x) + Math.abs(p.z - cand.z) < 3)) continue;
+      if (waterCells.some((p) => Math.abs(p.x - cand.x) + Math.abs(p.z - cand.z) < 10)) continue;
+      waterCells.push(cand);
+      const wall = this.adjacentWall(cand.x, cand.z);
+      // tucked near a wall when there is one — reads "left behind", not "loot drop"
+      const inset = CELL / 2 - WALL_HALF - 0.4;
+      const px = wall
+        ? this.worldX(cand.x) - wall.x * inset + wall.z * (this.rng() - 0.5) * 1.6
+        : this.worldX(cand.x) + (this.rng() - 0.5) * 1.4;
+      const pz = wall
+        ? this.worldZ(cand.z) - wall.z * inset + wall.x * (this.rng() - 0.5) * 1.6
+        : this.worldZ(cand.z) + (this.rng() - 0.5) * 1.4;
+      this.waterSpots.push(new THREE.Vector3(px, 0, pz));
+    }
+
+    // 8.8) False EXIT signs — red, ceiling-hung, pointing nowhere. They
+    // exist to be walked toward.
+    const signCandidates = shuffle(
+      rng,
+      reachable.slice(Math.floor(reachable.length * 0.25)),
+    );
+    const signCells: { x: number; z: number }[] = [];
+    for (const cand of signCandidates) {
+      if (this.falseExits.length >= 6) break;
+      if (signCells.some((p) => Math.abs(p.x - cand.x) + Math.abs(p.z - cand.z) < 8)) continue;
+      signCells.push(cand);
+      this.falseExits.push({
+        pos: new THREE.Vector3(this.worldX(cand.x), WALL_H - 0.55, this.worldZ(cand.z)),
+        yaw: randInt(rng, 0, 3) * (Math.PI / 2),
+      });
+    }
+
     // 9) Entity spawns far from the player.
     const farPool = reachable.slice(Math.floor(reachable.length * 0.7));
     const e = farPool[randInt(rng, 0, farPool.length - 1)];
@@ -415,9 +463,11 @@ export class Level {
         const inDark = darkZones.some(
           (zn) => (zn.x - x) * (zn.x - x) + (zn.z - z) * (zn.z - z) <= zn.r * zn.r,
         );
+        // Base flicker is rare — page beacons (below) also flicker, and the
+        // signal only reads if random flicker doesn't drown it out.
         const state: Fixture["state"] = inDark
           ? "off"
-          : rng() < 0.11
+          : rng() < 0.045
             ? "flicker"
             : "on";
         this.fixtures.push({
@@ -426,6 +476,7 @@ export class Level {
           state,
           aura: 0,
           phase: rng() * 100,
+          base: [1.9, 1.75, 1.35],
         });
       }
     }
@@ -437,6 +488,43 @@ export class Level {
       if (d < best) { best = d; nearest = f; }
     }
     if (nearest) nearest.state = "on";
+
+    // 10.3) Hue anomalies: two or three deep pockets where the fluorescents
+    // burn the wrong color — a sick red, a pale hospital green. The rest of
+    // Level 0 stays canonically mono-yellow.
+    const RED: [number, number, number] = [1.95, 0.4, 0.3];
+    const GREEN: [number, number, number] = [1.0, 1.8, 0.75];
+    const deepFixtures = this.fixtures.filter(
+      (f) => f.pos.distanceToSquared(this.spawn) > 625, // >25m out
+    );
+    const hueCenters: THREE.Vector3[] = [];
+    for (let i = 0; i < 3 && deepFixtures.length > 0; i++) {
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const c = deepFixtures[randInt(rng, 0, deepFixtures.length - 1)];
+        if (hueCenters.some((h) => h.distanceToSquared(c.pos) < 400)) continue;
+        hueCenters.push(c.pos);
+        const color = rng() < 0.55 ? RED : GREEN;
+        const r = 5 + rng() * 3.5;
+        for (const f of this.fixtures) {
+          if (f.pos.distanceToSquared(c.pos) < r * r) f.base = color;
+        }
+        break;
+      }
+    }
+
+    // 10.5) The fixture nearest each page sputters: "follow the dying
+    // lights" becomes a learnable rule that quietly guides the hunt.
+    for (const spot of this.pageSpots) {
+      let bf: Fixture | null = null;
+      let bd = Infinity;
+      for (const f of this.fixtures) {
+        const dx = f.pos.x - spot.pos.x;
+        const dz = f.pos.z - spot.pos.z;
+        const d = dx * dx + dz * dz;
+        if (d < bd) { bd = d; bf = f; }
+      }
+      if (bf) bf.state = "flicker";
+    }
 
     this.computeExit(exitCell);
   }
@@ -633,6 +721,7 @@ export class Level {
 
     this.buildFixtures();
     this.buildWallArt();
+    this.buildFalseExits();
     this.buildExit();
 
     scene.add(this.group);
@@ -678,7 +767,7 @@ export class Level {
       m.makeTranslation(f.pos.x, f.pos.y + 0.03, f.pos.z);
       frameMesh.setMatrixAt(f.index, m);
       if (f.state === "off") col.setRGB(0.012, 0.012, 0.01);
-      else col.setRGB(1.9, 1.75, 1.35); // HDR — feeds bloom
+      else col.setRGB(f.base[0], f.base[1], f.base[2]); // HDR — feeds bloom
       this.panelMesh.setColorAt(f.index, col);
     }
     this.panelMesh.instanceMatrix.needsUpdate = true;
@@ -690,6 +779,44 @@ export class Level {
     const col = new THREE.Color(r, g, b);
     this.panelMesh.setColorAt(index, col);
     if (this.panelMesh.instanceColor) this.panelMesh.instanceColor.needsUpdate = true;
+  }
+
+  /** Red EXIT signs hanging mid-corridor. None of them are telling the truth. */
+  private buildFalseExits() {
+    const housingMat = new THREE.MeshStandardMaterial({ color: 0x1a0b0a, roughness: 0.85, metalness: 0.3 });
+    const rodMat = new THREE.MeshStandardMaterial({ color: 0x222220, roughness: 0.8, metalness: 0.5 });
+    const housingGeo = new THREE.BoxGeometry(0.66, 0.26, 0.055);
+    const rodGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.32);
+    const faceGeo = new THREE.PlaneGeometry(0.6, 0.22);
+
+    this.falseExits.forEach((fe, i) => {
+      const g = new THREE.Group();
+      g.position.copy(fe.pos);
+      g.rotation.y = fe.yaw;
+
+      const faceMat = new THREE.MeshBasicMaterial({
+        map: makeFalseExitSignTexture(this.seed + i, this.rng() < 0.5 ? -1 : 1),
+        // mildly HDR — enough for a sick red bloom halo in the fog
+        color: new THREE.Color(1.35, 1.35, 1.35),
+      });
+
+      const housing = new THREE.Mesh(housingGeo, housingMat);
+      const front = new THREE.Mesh(faceGeo, faceMat);
+      front.position.z = 0.029;
+      const back = new THREE.Mesh(faceGeo, faceMat);
+      back.position.z = -0.029;
+      back.rotation.y = Math.PI;
+      const rod = new THREE.Mesh(rodGeo, rodMat);
+      rod.position.y = 0.28;
+
+      g.add(housing, front, back, rod);
+      g.traverse((o) => {
+        o.matrixAutoUpdate = false;
+        o.updateMatrix();
+      });
+      g.updateMatrixWorld(true);
+      this.group.add(g);
+    });
   }
 
   private buildExit() {
