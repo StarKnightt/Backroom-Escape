@@ -15,7 +15,7 @@ export class Player {
   stamina = 1;
   exhausted = false;
   sprinting = false;
-  /** Ctrl held — silent feet, slower, harder for it to notice you */
+  /** C toggles — silent feet, slower, harder for it to notice you */
   sneaking = false;
   flashlightOn = true;
   /** dev cheat: walk through walls, faster */
@@ -268,11 +268,10 @@ export class Player {
   keyDown(code: string) {
     this.keys.add(code);
     if (code === "KeyF") this.toggleFlashlight();
-    // Sneak is a TOGGLE — tap Ctrl. (Hold-to-sneak would mean Ctrl is down
-    // while W is pressed, and in a browser tab Ctrl+W closes the tab.)
-    if (code === "ControlLeft" || code === "ControlRight") {
-      this.sneaking = !this.sneaking;
-    }
+    // Sneak is a TOGGLE on C. Not Ctrl: players hold their sneak key no
+    // matter what the menu says, and a held Ctrl turns W into Ctrl+W —
+    // which closes the tab and JS cannot block it outside fullscreen.
+    if (code === "KeyC") this.sneaking = !this.sneaking;
     // Breaking into a run cancels sneak — nobody sprints quietly.
     if (code === "ShiftLeft" || code === "ShiftRight") this.sneaking = false;
   }

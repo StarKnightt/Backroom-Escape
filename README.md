@@ -26,7 +26,7 @@ wallpaper, damp carpet and buzzing fluorescent light.
 | WASD | Move |
 | Mouse | Look |
 | Shift | Sprint (limited stamina, cancels sneak) |
-| Ctrl | Toggle sneak — silent feet, slower, much harder for it to notice you |
+| C | Toggle sneak — silent feet, slower, much harder for it to notice you |
 | F | Flashlight |
 | E | Interact (pages / door) |
 | Esc | Pause |
@@ -98,8 +98,11 @@ what's on.
   the garbage mouse deltas Chromium fires as the lock engages, spike
   deltas are dropped, overlay buttons ignore the second half of accidental
   double-clicks, and the frame loop is allocation-free (no GC stutter).
-  Sneak is a Ctrl *tap* toggle, so Ctrl is never held down while W is
-  pressed — holding it would let Ctrl+W close the tab mid-game.
+  Sneak lives on C, not Ctrl — players hold their sneak key out of habit,
+  and a held Ctrl turns W into Ctrl+W, which closes the tab and cannot be
+  blocked by JS. Pressing Ctrl in-game shows a one-time "sneak is on C"
+  toast. OS key repeats are filtered so held keys can't strobe toggles
+  (the old cause of phantom footsteps while sneaking).
 - **Mobile support** — touch joystick + look pad + on-screen buttons,
   landscape enforcement, native-resolution rendering, no pointer lock
   required.

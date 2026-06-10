@@ -42,6 +42,27 @@ await page.waitForFunction(() => {
   const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("ENTER"));
   return b && !b.disabled;
 }, { timeout: 30000 });
+
+// --- menu taller than a short landscape screen: it must scroll so the
+// ENTER button is actually reachable (used to be clipped with no scroll)
+const menuScroll = await page.evaluate(() => {
+  const scroller = [...document.querySelectorAll("div")].find(
+    (d) => getComputedStyle(d).overflowY === "auto" && d.scrollHeight > d.clientHeight + 4,
+  );
+  const btn = [...document.querySelectorAll("button")].find((x) =>
+    x.textContent.includes("ENTER"),
+  );
+  if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  const r = btn.getBoundingClientRect();
+  return {
+    scrollable: !!scroller,
+    btnReachable: r.top >= 0 && r.bottom <= window.innerHeight,
+  };
+});
+console.log("MENU SCROLL:", JSON.stringify(menuScroll),
+  menuScroll.btnReachable ? "OK" : "FAILED");
+await page.screenshot({ path: "scripts/shots/m1b-menu-scrolled.png" });
+
 await page.tap("button");
 await new Promise((r) => setTimeout(r, 1200));
 

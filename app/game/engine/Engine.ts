@@ -37,7 +37,7 @@ const GAME_KEYS = new Set([
   "KeyW", "KeyA", "KeyS", "KeyD",
   "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
   "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight",
-  "KeyE", "KeyF", "Space",
+  "KeyE", "KeyF", "KeyC", "Space",
 ]);
 
 export class Engine {
@@ -73,6 +73,8 @@ export class Engine {
   /** dev cheats — unlocked by typing "redrum" while playing */
   readonly cheats = { unlocked: false, god: false, noclip: false, fullbright: false, freeze: false };
   private cheatBuffer = "";
+  /** one-time "sneak is C, not Ctrl" toast for muscle-memory players */
+  private ctrlHintShown = false;
   private brightLight: THREE.AmbientLight | null = null;
 
   // pointer-lock bookkeeping (Chromium enforces a ~1.25s relock cooldown)
@@ -246,8 +248,20 @@ export class Engine {
     const onKeyDown = (e: KeyboardEvent) => {
       if (this.state !== "playing") return;
       // Keep game keys away from the browser (Ctrl+S dialog, space scroll…).
-      // Ctrl+W etc. are captured by the Keyboard Lock API in fullscreen.
       if (GAME_KEYS.has(e.code)) e.preventDefault();
+      // OS key repeat fires keydown over and over while a key is held —
+      // without this, every toggle (sneak, torch) strobes on/off. Movement
+      // is held-key-set based, so repeats carry no information at all.
+      if (e.repeat) return;
+      // Old habit guard: Ctrl is NOT sneak. A held Ctrl makes W close the
+      // tab (Ctrl+W is browser-reserved, unblockable outside fullscreen).
+      if (e.code === "ControlLeft" || e.code === "ControlRight") {
+        if (!this.ctrlHintShown) {
+          this.ctrlHintShown = true;
+          this.toast("SNEAK IS ON [C] — DON'T HOLD CTRL, CTRL+W CLOSES THE TAB");
+        }
+        return;
+      }
       this.player.keyDown(e.code);
       if (e.code === "KeyE") this.tryInteract();
       if (e.code === "KeyF") this.audio.click();
