@@ -104,7 +104,12 @@ what's on.
   toast. OS key repeats are filtered so held keys can't strobe toggles
   (the old cause of phantom footsteps while sneaking).
 - **Mobile support** — touch joystick + look pad + on-screen buttons,
-  landscape enforcement, native-resolution rendering, no pointer lock
+  landscape enforcement, native-resolution rendering, no pointer lock.
+  Tapping ENTER requests fullscreen + landscape orientation lock (Android;
+  iPhone Safari has no Fullscreen API — add to home screen instead, the
+  web manifest declares `display: fullscreen`). Desktop stays in-tab.
+  Favicon/app icons are procedurally drawn by `scripts/genicon.mjs`
+  (multi-size .ico + PNG + apple-touch-icon + manifest icons)
   required.
 
 ## Run it

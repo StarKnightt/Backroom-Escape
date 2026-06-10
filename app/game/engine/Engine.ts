@@ -166,14 +166,17 @@ export class Engine {
     void this.audio.resume();
     this.setState("playing");
     this.startedAt = this.elapsed;
-    if (!this.touchPrimary) this.lockPointer();
+    if (this.touchPrimary) this.enterTouchFullscreen();
+    else this.lockPointer();
     this.pushHud(true);
   }
 
   resume() {
     if (this.state !== "paused") return;
     if (this.touchPrimary) {
-      // No pointer lock on touch devices — resume directly.
+      // No pointer lock on touch devices — resume directly (and re-grab
+      // fullscreen, the back gesture / Esc may have dropped it).
+      this.enterTouchFullscreen();
       void this.audio.resume();
       this.setState("playing");
       return;
@@ -181,6 +184,31 @@ export class Engine {
     // The state flips to "playing" once the pointer lock actually engages
     // (see onLockChange) — flipping early would fight the relock cooldown.
     this.lockPointer();
+  }
+
+  /**
+   * Phones only: browser chrome eats ~25% of a small landscape screen, so
+   * go fullscreen on the start/resume tap (a user gesture, as required).
+   * Desktop deliberately stays in-tab. iPhone Safari has no Fullscreen API
+   * at all — there the manifest's display:fullscreen (add to home screen)
+   * is the only route, so a rejection here is silently ignored.
+   */
+  private enterTouchFullscreen() {
+    if (document.fullscreenElement) return;
+    try {
+      const p = document.documentElement.requestFullscreen?.({ navigationUI: "hide" });
+      void p
+        ?.then(() => {
+          // Pin landscape while fullscreen (Android; needs fullscreen first).
+          const o = screen.orientation as ScreenOrientation & {
+            lock?: (o: string) => Promise<void>;
+          };
+          return o.lock?.("landscape");
+        })
+        .catch(() => {});
+    } catch {
+      // older WebKit throws synchronously — nothing to do
+    }
   }
 
   /** External pause (pause button on touch UI / rotate-to-portrait). */

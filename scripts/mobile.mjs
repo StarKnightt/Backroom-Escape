@@ -66,6 +66,10 @@ await page.screenshot({ path: "scripts/shots/m1b-menu-scrolled.png" });
 await page.tap("button");
 await new Promise((r) => setTimeout(r, 1200));
 
+// fullscreen is requested on the start tap (headless may deny — informational)
+const fs = await page.evaluate(() => !!document.fullscreenElement);
+console.log("FULLSCREEN ON START TAP:", fs ? "granted" : "denied by environment (ok in headless)");
+
 const hudInfo = await page.evaluate(() => ({
   torchBtn: document.body.innerText.includes("TORCH"),
   sneakBtn: document.body.innerText.includes("SNEAK"),

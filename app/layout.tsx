@@ -17,6 +17,13 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: "#0a0905",
   colorScheme: "dark",
+  // Game viewport: bleed under notches in fullscreen, no pinch/double-tap
+  // zoom fighting the touch controls.
+  viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({
