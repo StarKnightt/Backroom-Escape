@@ -355,10 +355,16 @@ export class Level {
     // so players stumble onto one early and learn what they're hunting.
     // Selecting by walk distance, not array fraction — cell count grows
     // quadratically, so even "2%" of cells lands 30m+ out.
-    const starterPool = reachable.filter((c) => c.d >= 2 && c.d <= 6);
-    for (let attempt = 0; attempt < 80 && chosen.length === 0; attempt++) {
-      const cand = starterPool[randInt(rng, 0, starterPool.length - 1)];
-      if (cand && placePage(cand)) break;
+    // GUARANTEED: if no near cell touches a wall (plaza spawns), widen the
+    // ring until one does — every run must hand the player that first hope.
+    for (let maxD = 6; chosen.length === 0 && maxD <= 30; maxD += 4) {
+      const pool = shuffle(
+        rng,
+        reachable.filter(
+          (c) => c.d >= 2 && c.d <= maxD && this.adjacentWall(c.x, c.z) !== null,
+        ),
+      );
+      for (const cand of pool) if (placePage(cand)) break;
     }
     for (let b = 1; b < bands; b++) {
       const lo = Math.floor(reachable.length * (0.15 + (b / bands) * 0.8));

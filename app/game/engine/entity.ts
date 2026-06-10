@@ -18,7 +18,10 @@ export interface EntityContext {
 
 const ROAM_SPEED = 1.3;
 const STALK_SPEED = 2.15;
-const CHASE_SPEED = 4.85;
+// A hair SLOWER than the player's sprint (4.7): a chase you react to is
+// survivable, a chase you fumble still kills. It used to outrun sprint,
+// which made every scream a death sentence.
+const CHASE_SPEED = 4.55;
 const SEARCH_SPEED = 2.4;
 const KILL_DIST = 1.3;
 
@@ -253,7 +256,7 @@ export class Entity {
     if (s === "chase" && prev !== "chase") {
       this.onScreech?.();
     }
-    if (s === "search") this.searchTimer = 9;
+    if (s === "search") this.searchTimer = 7;
   }
 
   /** Straight-line visibility between entity and player (grid based). */
@@ -290,11 +293,11 @@ export class Entity {
       case "roam": {
         this.frozen = false;
         // Sneaking players are much harder to notice.
-        const noticeRange = ctx.playerSneaking ? 13 : 26;
+        const noticeRange = ctx.playerSneaking ? 11 : 22;
         if (dist < noticeRange && (los || ctx.playerSprinting)) this.setState("stalk");
         // Horror director: if the player has been "safe" too long, close in.
         this.farFromPlayerTime = dist > 50 ? this.farFromPlayerTime + dt : 0;
-        if (this.farFromPlayerTime > 25 && !los) {
+        if (this.farFromPlayerTime > 30 && !los) {
           this.farFromPlayerTime = 0;
           this.relocateNear(ctx.playerPos, 6, 9);
         }
@@ -304,7 +307,7 @@ export class Entity {
         this.frozen = observed && dist > 4.5;
         if (this.frozen) {
           this.observedTime += dt;
-          if (this.observedTime > 2.4) {
+          if (this.observedTime > 3) {
             this.frozen = false;
             this.observedTime = 0;
             this.setState("chase"); // it knows that you know
@@ -318,7 +321,9 @@ export class Entity {
       }
       case "chase": {
         this.frozen = false;
-        if (this.losLostTime > 5 && dist > 14) this.setState("search");
+        // Breaking line of sight is rewarded sooner — duck around a corner
+        // and hold your nerve and it loses the thread.
+        if (this.losLostTime > 3.5 && dist > 11) this.setState("search");
         break;
       }
       case "search": {

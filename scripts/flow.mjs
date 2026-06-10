@@ -74,9 +74,12 @@ const starterDist = await page.evaluate(() => {
   const p = e.level.pageSpots[0].pos;
   return Math.hypot(p.x - s.x, p.z - s.z);
 });
+const pageCount = await page.evaluate(() => window.__backrooms.level.pageSpots.length);
 console.log(
   "STARTER PAGE:",
-  starterDist < 26 ? `OK (${starterDist.toFixed(1)}m)` : `TOO FAR (${starterDist.toFixed(1)}m)`,
+  starterDist < 30 && pageCount === 8
+    ? `OK (${starterDist.toFixed(1)}m, ${pageCount} pages)`
+    : `BAD (${starterDist.toFixed(1)}m, ${pageCount} pages)`,
 );
 
 // --- objective banner announces the goal at run start

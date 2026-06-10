@@ -339,15 +339,16 @@ export class Player {
       moving && iz < 0 && !this.exhausted && !this.sneaking;
     this.sprinting = wantSprint && this.stamina > 0;
 
-    // --- stamina
+    // --- stamina (~7.7s of sprint, refills in ~7 — generous enough that
+    // an alert player can actually outlast a chase)
     if (this.sprinting) {
-      this.stamina = Math.max(0, this.stamina - dt * 0.16);
-      this.staminaRegenDelay = 1.2;
+      this.stamina = Math.max(0, this.stamina - dt * 0.13);
+      this.staminaRegenDelay = 0.9;
       if (this.stamina === 0) this.exhausted = true;
     } else {
       this.staminaRegenDelay -= dt;
       if (this.staminaRegenDelay <= 0) {
-        this.stamina = Math.min(1, this.stamina + dt * 0.12);
+        this.stamina = Math.min(1, this.stamina + dt * 0.16);
       }
       if (this.exhausted && this.stamina > 0.3) this.exhausted = false;
     }
