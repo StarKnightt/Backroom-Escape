@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Level } from "./level";
+import { Level, WALL_H } from "./level";
 
 export const EYE_HEIGHT = 1.62;
 const RADIUS = 0.32;
@@ -48,6 +48,8 @@ export class Player {
   private staminaRegenDelay = 0;
   private flickerTimer = 0;
   private flickerState = 1;
+  /** smoothed close-surface dimming factor for the torch (anti-blowout) */
+  private torchDim = 1;
 
   /** set by engine each frame the entity event wants the camera shaken */
   shake = 0;
@@ -417,9 +419,37 @@ export class Player {
         this.flickerTimer = 0.05 + Math.random() * 0.1;
       }
     }
+    // --- auto-dim against close surfaces: a wall half a meter out catches
+    // inverse-square intensity and clips to a pure white disc. March the
+    // aim ray to the first wall (and the floor/ceiling planes) and scale
+    // the torch so close surfaces stay textured instead of blowing out.
+    const DIM_RANGE = 6.2;
+    let aimDist = DIM_RANGE;
+    {
+      const cosP = Math.cos(this.pitch);
+      const dx = -Math.sin(this.yaw) * cosP;
+      const dz = -Math.cos(this.yaw) * cosP;
+      for (let d = 0.25; d < DIM_RANGE; d += 0.22) {
+        if (this.level.solidAtWorld(this.pos.x + dx * d, this.pos.z + dz * d)) {
+          aimDist = d;
+          break;
+        }
+      }
+      const eyeY = EYE_HEIGHT - this.crouch;
+      const dirY = Math.sin(this.pitch);
+      if (dirY < -0.05) aimDist = Math.min(aimDist, eyeY / -dirY);
+      else if (dirY > 0.05) aimDist = Math.min(aimDist, (WALL_H - eyeY) / dirY);
+    }
+    // (d/range)^1.5 roughly cancels inverse-square inside DIM_RANGE, so the
+    // lit spot keeps near-constant apparent brightness up close. Pages and
+    // scrawls caught in the beam stay legible instead of vanishing into a
+    // white disc — full power only returns at hallway distances.
+    const dimTarget = Math.max(0.05, Math.min(1, Math.pow(aimDist / 6, 1.5)));
+    this.torchDim += (dimTarget - this.torchDim) * Math.min(1, dt * 9);
+
     const subtle = 0.96 + Math.sin(time * 47) * 0.012 + Math.sin(time * 13.7) * 0.012;
     this.flashlight.intensity =
-      (this.flashlightOn ? 46 : 0) * this.flickerState * subtle;
+      (this.flashlightOn ? 46 : 0) * this.flickerState * subtle * this.torchDim;
     // Skip the whole shadow-map render while the torch is off — it's the
     // single most expensive light and contributes nothing when dark.
     this.flashlight.castShadow = this.flashlightOn;

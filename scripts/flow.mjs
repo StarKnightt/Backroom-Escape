@@ -28,6 +28,22 @@ await page.waitForFunction(() => {
 await page.click("button");
 await new Promise((r) => setTimeout(r, 1000));
 
+// --- wall scrawls generated and placed
+const art = await page.evaluate(() => window.__backrooms.level.artSpots.length);
+console.log("WALL ART:", art >= 10 ? `OK (${art})` : `LOW (${art})`);
+
+// --- starter page lands a short walk from spawn (findability)
+const starterDist = await page.evaluate(() => {
+  const e = window.__backrooms;
+  const s = e.level.spawn;
+  const p = e.level.pageSpots[0].pos;
+  return Math.hypot(p.x - s.x, p.z - s.z);
+});
+console.log(
+  "STARTER PAGE:",
+  starterDist < 26 ? `OK (${starterDist.toFixed(1)}m)` : `TOO FAR (${starterDist.toFixed(1)}m)`,
+);
+
 // --- objective banner announces the goal at run start
 const bannerUp = await page.evaluate(() => {
   const t = document.body.innerText;

@@ -6,6 +6,7 @@ import {
   makeDoorTexture,
   makeExitSignTexture,
   makeLightPanelTexture,
+  makeWallArtTexture,
   makeWallMaps,
 } from "./textures";
 
@@ -86,6 +87,8 @@ export class Level {
 
   fixtures: Fixture[] = [];
   pageSpots: PageSpot[] = [];
+  /** wall scrawls left by whoever was here before — pos + outward normal */
+  artSpots: PageSpot[] = [];
   spawn = new THREE.Vector3();
   spawnCell = { x: 0, z: 0 };
   entitySpawnCell = { x: 0, z: 0 };
@@ -341,7 +344,16 @@ export class Level {
       });
       return true;
     };
-    for (let b = 0; b < bands; b++) {
+    // Band 0 is the starter page: 2-6 BFS steps from spawn (~8-24m walk),
+    // so players stumble onto one early and learn what they're hunting.
+    // Selecting by walk distance, not array fraction — cell count grows
+    // quadratically, so even "2%" of cells lands 30m+ out.
+    const starterPool = reachable.filter((c) => c.d >= 2 && c.d <= 6);
+    for (let attempt = 0; attempt < 80 && chosen.length === 0; attempt++) {
+      const cand = starterPool[randInt(rng, 0, starterPool.length - 1)];
+      if (cand && placePage(cand)) break;
+    }
+    for (let b = 1; b < bands; b++) {
       const lo = Math.floor(reachable.length * (0.15 + (b / bands) * 0.8));
       const hi = Math.floor(reachable.length * (0.15 + ((b + 1) / bands) * 0.8)) - 1;
       for (let attempt = 0; attempt < 80; attempt++) {
@@ -355,6 +367,31 @@ export class Level {
       const cand = reachable[randInt(rng, Math.floor(reachable.length * 0.1), reachable.length - 1)];
       if (chosen.some((p) => Math.abs(p.x - cand.x) + Math.abs(p.z - cand.z) < 3)) continue;
       placePage(cand);
+    }
+
+    // 8.5) Wall scrawls — every wall-adjacent cell is a candidate; shuffle
+    // and take spaced ones. Kept off page cells so they never mask a page.
+    const artCandidates = shuffle(
+      rng,
+      reachable.filter((c) => this.adjacentWall(c.x, c.z) !== null),
+    );
+    const artCells: { x: number; z: number }[] = [];
+    for (const cand of artCandidates) {
+      if (this.artSpots.length >= 14) break;
+      if (chosen.some((p) => Math.abs(p.x - cand.x) + Math.abs(p.z - cand.z) < 2)) continue;
+      if (artCells.some((p) => Math.abs(p.x - cand.x) + Math.abs(p.z - cand.z) < 3)) continue;
+      const wall = this.adjacentWall(cand.x, cand.z)!;
+      artCells.push(cand);
+      const inset = CELL / 2 - WALL_HALF - 0.015;
+      const lateral = (this.rng() - 0.5) * 2.0;
+      this.artSpots.push({
+        pos: new THREE.Vector3(
+          this.worldX(cand.x) - wall.x * inset + wall.z * lateral,
+          1.05 + this.rng() * 0.75,
+          this.worldZ(cand.z) - wall.z * inset + wall.x * lateral,
+        ),
+        normal: new THREE.Vector3(wall.x, 0, wall.z),
+      });
     }
 
     // 9) Entity spawns far from the player.
@@ -595,9 +632,30 @@ export class Level {
     this.group.add(floorMesh, ceilMesh, wallMesh);
 
     this.buildFixtures();
+    this.buildWallArt();
     this.buildExit();
 
     scene.add(this.group);
+  }
+
+  /** Ink drawings from previous visitors, decaled onto partition walls. */
+  private buildWallArt() {
+    this.artSpots.forEach((spot, i) => {
+      const size = 0.85 + this.rng() * 0.55;
+      const mat = new THREE.MeshStandardMaterial({
+        map: makeWallArtTexture(this.seed + 631 + i * 149),
+        transparent: true,
+        depthWrite: false, // decal — the wall behind it owns the depth
+        roughness: 0.96,
+      });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
+      mesh.position.copy(spot.pos);
+      mesh.lookAt(spot.pos.clone().add(spot.normal));
+      mesh.rotateZ((this.rng() - 0.5) * 0.24);
+      mesh.matrixAutoUpdate = false;
+      mesh.updateMatrix();
+      this.group.add(mesh);
+    });
   }
 
   private buildFixtures() {
@@ -770,6 +828,22 @@ export class Level {
       }
     }
     return p;
+  }
+
+  /** Is this world-space point inside a partition wall or pillar? (XZ) */
+  solidAtWorld(px: number, pz: number): boolean {
+    const c = this.cellOf(px, pz);
+    const kind = this.cell(c.x, c.z);
+    if (kind === SOLID) return true;
+    if (kind === PILLAR &&
+        Math.abs(px - this.worldX(c.x)) <= PILLAR_HALF &&
+        Math.abs(pz - this.worldZ(c.z)) <= PILLAR_HALF) return true;
+    const T = WALL_HALF;
+    if (this.hasWallV(c.x, c.z) && px - (this.worldX(c.x) - CELL / 2) <= T) return true;
+    if (this.hasWallV(c.x + 1, c.z) && (this.worldX(c.x) + CELL / 2) - px <= T) return true;
+    if (this.hasWallH(c.x, c.z) && pz - (this.worldZ(c.z) - CELL / 2) <= T) return true;
+    if (this.hasWallH(c.x, c.z + 1) && (this.worldZ(c.z) + CELL / 2) - pz <= T) return true;
+    return false;
   }
 
   /** Random reachable open cell at least `minDistFromSpawn` walking cells out. */

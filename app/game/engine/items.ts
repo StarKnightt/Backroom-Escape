@@ -33,7 +33,7 @@ export class Items {
         map: tex,
         emissive: 0xfff4cc,
         emissiveMap: tex,
-        emissiveIntensity: 0.08, // faintly catches the eye in darkness
+        emissiveIntensity: 0.2, // catches the eye in darkness (pulsed in update)
         roughness: 0.92,
         side: THREE.DoubleSide,
       });
@@ -84,7 +84,7 @@ export class Items {
       if (p.collected) continue;
       const to = this.vTo.subVectors(p.mesh.position, camPos);
       const d = to.length();
-      if (d < 2.3 && to.normalize().dot(camDir) > 0.86) {
+      if (d < 2.6 && to.normalize().dot(camDir) > 0.8) {
         return { type: "page", index: i, label: "TAKE PAGE" };
       }
     }
@@ -120,10 +120,14 @@ export class Items {
 
   update(dt: number, time: number) {
     // Pages breathe on the wall — paper in a draft that shouldn't exist.
+    // The glow pulses so a page at the edge of the torch cone reads as
+    // "thing", not "wall stain". Players kept walking straight past them.
     for (const p of this.pages) {
       if (p.collected) continue;
       p.mesh.rotation.z += Math.sin(time * 1.7 + p.phase) * 0.0009;
       p.mesh.position.y = p.basePos.y + Math.sin(time * 2.3 + p.phase) * 0.0035;
+      (p.mesh.material as THREE.MeshStandardMaterial).emissiveIntensity =
+        0.18 + (Math.sin(time * 2.1 + p.phase) + 1) * 0.08;
     }
 
     // Door swings open once the player pushes it.

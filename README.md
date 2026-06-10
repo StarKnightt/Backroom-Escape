@@ -14,7 +14,9 @@ behind you. Level 0: an endless office of mono-yellow wallpaper, damp
 carpet and buzzing fluorescent light. Someone was here before you — they
 left pages pinned to the walls.
 
-- **Find all 8 journal pages** pinned to the walls.
+- **Find all 8 journal pages** pinned to the walls. The other scrawls —
+  stick figures, spirals, tallies, red handprints — are from whoever was
+  here before you. They are not instructions. Probably.
 - **Find the exit door** (look for the green glow) — it only opens once you
   hold every page.
 - **Avoid the Wanderer.** It roams the halls, kills the lights around it,
