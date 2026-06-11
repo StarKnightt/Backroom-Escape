@@ -83,7 +83,9 @@ const finalB64 = await page.evaluate(async (b64, W, H) => {
   const img = new Image();
   await new Promise((res) => { img.onload = res; img.src = `data:image/png;base64,${b64}`; });
   const fam = getComputedStyle(document.querySelector(".font-elite")).fontFamily;
-  await document.fonts.load(`90px ${fam.split(",")[0]}`);
+  // The menu already rendered with this font, so it's loaded; fonts.load()
+  // rejects with NetworkError on next/font/local family names — don't call it.
+  try { await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1500))]); } catch {}
 
   const c = document.createElement("canvas");
   c.width = W; c.height = H;

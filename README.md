@@ -146,3 +146,14 @@ node scripts/mobile.mjs    # emulated phone: rotate prompt + touch controls
 ```
 
 Screenshots land in `scripts/shots/`.
+
+## Portal build (CrazyGames etc.)
+
+```bash
+node scripts/packcg.mjs    # -> backrooms-crazygames.zip (index.html at root)
+node scripts/cgtest.mjs    # proves the zip boots when served from a subfolder
+```
+
+`CG_EXPORT=1` switches the build to a fully static export with relative
+asset paths, so the bundle runs from any CDN subfolder. The Vercel
+deployment is unaffected.

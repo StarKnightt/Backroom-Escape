@@ -61,7 +61,8 @@ export default function RootLayout({
     <html lang="en" className={`${specialElite.variable} h-full antialiased`}>
       <body className="h-full overflow-hidden bg-black text-zinc-200">
         {children}
-        <Analytics />
+        {/* Vercel-only — the CrazyGames bundle would just spam 404s */}
+        {process.env.CG_EXPORT !== "1" && <Analytics />}
       </body>
     </html>
   );

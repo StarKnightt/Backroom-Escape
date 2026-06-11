@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# crazygames upload bundle (regenerate with: node scripts/packcg.mjs)
+backrooms-crazygames.zip
+
 # production
 /build
 
