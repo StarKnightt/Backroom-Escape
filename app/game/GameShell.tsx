@@ -9,7 +9,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { Engine, EngineCallbacks, GameState, HudState } from "./engine/Engine";
+import type { Engine, EngineCallbacks, GameState, HudState, MinimapState } from "./engine/Engine";
+import Minimap from "./Minimap";
 
 const GameCanvas = dynamic(() => import("./GameCanvas"), { ssr: false });
 
@@ -22,6 +23,7 @@ const INITIAL_HUD: HudState = {
   flashlight: true,
   sneaking: false,
   cheats: null,
+  mapCheat: false,
 };
 
 export default function GameShell() {
@@ -31,6 +33,7 @@ export default function GameShell() {
   const [state, setState] = useState<GameState>("idle");
   const [booted, setBooted] = useState(false);
   const [hud, setHud] = useState<HudState>(INITIAL_HUD);
+  const [minimap, setMinimap] = useState<MinimapState | null>(null);
   const [pageLines, setPageLines] = useState<string[] | null>(null);
   const [stats, setStats] = useState({ pages: 0, seconds: 0 });
   const [toast, setToast] = useState<string | null>(null);
@@ -73,6 +76,7 @@ export default function GameShell() {
         bannerTimerRef.current = setTimeout(() => setBanner(null), 5200);
       }
     },
+    onMinimap: (m) => setMinimap(m),
     onPageText: (lines) => setPageLines(lines),
     onStats: (s) => setStats(s),
     onToast: (m) => setToast(m),
@@ -117,6 +121,7 @@ export default function GameShell() {
     setBooted(false);
     setState("idle");
     setHud(INITIAL_HUD);
+    setMinimap(null);
     setPageLines(null);
     setBanner(null);
     setShowCredits(false);
@@ -174,6 +179,9 @@ export default function GameShell() {
         <div className="pointer-events-none absolute inset-0 cursor-none">
           {/* crosshair */}
           <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-100/40" />
+
+          {/* minimap */}
+          {hud.mapCheat && <Minimap data={minimap} />}
 
           {/* objective — bright + glowing so new players actually see it */}
           <div className="font-elite absolute left-5 top-4 text-sm tracking-[0.25em] text-amber-50/95 [text-shadow:0_0_14px_rgba(255,225,150,0.5)]">

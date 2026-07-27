@@ -143,6 +143,7 @@ node scripts/flow.mjs      # page pickup -> death -> retry
 node scripts/diag.mjs      # bright-lit geometry/model diagnostics
 node scripts/cheats.mjs    # redrum unlock + every cheat toggle
 node scripts/mobile.mjs    # emulated phone: rotate prompt + touch controls
+node scripts/entity-closeup.mjs  # entity frozen dead ahead + turntable + face close-up (model review)
 ```
 
 Screenshots land in `scripts/shots/`.

@@ -23,6 +23,7 @@ export default function GameCanvas({ callbacksRef, onReady }: Props) {
       engine = new Engine(container, canvas, {
         onState: (s) => callbacksRef.current?.onState(s),
         onHud: (h) => callbacksRef.current?.onHud(h),
+        onMinimap: (m) => callbacksRef.current?.onMinimap(m),
         onPageText: (l) => callbacksRef.current?.onPageText(l),
         onStats: (s) => callbacksRef.current?.onStats(s),
         onToast: (m) => callbacksRef.current?.onToast(m),

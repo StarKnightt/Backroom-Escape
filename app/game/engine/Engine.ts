@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Level } from "./level";
+import { CELL, Level, PILLAR } from "./level";
 import { Player } from "./player";
 import { Entity } from "./entity";
 import { GameAudio } from "./audio";
@@ -19,11 +19,28 @@ export interface HudState {
   sneaking: boolean;
   /** compact list of active cheats, e.g. "GOD · NOCLIP" — null when none */
   cheats: string | null;
+  /** dev cheat: the minimap overlay, unlocked+toggled the same way as the rest */
+  mapCheat: boolean;
+}
+
+export interface MinimapState {
+  /** meters from the maze center to its edge, both axes */
+  halfExtent: number;
+  /** wall segments, flat [x1,z1,x2,z2, ...] — static per run, same array every push */
+  walls: Float32Array;
+  /** freestanding pillar centers, flat [x,z, ...] — static per run */
+  pillars: Float32Array;
+  player: { x: number; z: number; yaw: number };
+  pages: { x: number; z: number; collected: boolean }[];
+  exit: { x: number; z: number; open: boolean };
+  /** null while the entity hasn't woken up yet */
+  entity: { x: number; z: number } | null;
 }
 
 export interface EngineCallbacks {
   onState: (state: GameState) => void;
   onHud: (hud: HudState) => void;
+  onMinimap: (m: MinimapState) => void;
   onPageText: (lines: string[]) => void;
   onStats: (stats: { pages: number; seconds: number }) => void;
   onToast: (msg: string) => void;
@@ -70,9 +87,19 @@ export class Engine {
   private nextAmbientEvent = 18;
   private hudTimer = 0;
   private lastPrompt: string | null = null;
+  /** minimap wall/pillar geometry — built once, reused every HUD push */
+  private minimapWalls: Float32Array = new Float32Array(0);
+  private minimapPillars: Float32Array = new Float32Array(0);
 
   /** dev cheats — unlocked by typing "redrum" while playing */
-  readonly cheats = { unlocked: false, god: false, noclip: false, fullbright: false, freeze: false };
+  readonly cheats = {
+    unlocked: false,
+    god: false,
+    noclip: false,
+    fullbright: false,
+    freeze: false,
+    map: false,
+  };
   private cheatBuffer = "";
   /** one-time "sneak is C, not Ctrl" toast for muscle-memory players */
   private ctrlHintShown = false;
@@ -134,6 +161,7 @@ export class Engine {
     this.level = new Level(seed);
     this.level.build(this.scene);
     this.fixtureMult = new Float32Array(this.level.fixtures.length).fill(-1);
+    this.buildMinimapGeometry();
 
     this.player = new Player(this.level, width / height);
     this.player.addTo(this.scene);
@@ -392,7 +420,7 @@ export class Engine {
       this.cheatBuffer = (this.cheatBuffer + e.key.toLowerCase()).slice(-10);
       if (!this.cheats.unlocked && this.cheatBuffer.endsWith("redrum")) {
         this.cheats.unlocked = true;
-        this.toast("CHEATS UNLOCKED — [G]OD [N]OCLIP [B]RIGHT [X]FREEZE [P]AGES [T]ELEPORT");
+        this.toast("CHEATS UNLOCKED — [G]OD [N]OCLIP [B]RIGHT [X]FREEZE [M]AP [P]AGES [T]ELEPORT");
         return;
       }
     }
@@ -422,6 +450,10 @@ export class Engine {
       case "KeyX":
         this.cheats.freeze = !this.cheats.freeze;
         this.toast(`ENTITY ${this.cheats.freeze ? "FROZEN" : "RELEASED"}`);
+        break;
+      case "KeyM":
+        this.cheats.map = !this.cheats.map;
+        this.toast(`MAP ${this.cheats.map ? "ON" : "OFF"}`);
         break;
       case "KeyP": {
         let grabbed = 0;
@@ -817,6 +849,39 @@ export class Engine {
     }
   }
 
+  /* ------------------------------ minimap ------------------------------ */
+
+  /** Wall/pillar layout for the minimap — computed once, the maze never changes mid-run. */
+  private buildMinimapGeometry() {
+    const lvl = this.level;
+    const S = lvl.size;
+    const half = CELL / 2;
+    const walls: number[] = [];
+    for (let z = 0; z < S; z++) {
+      for (let x = 0; x <= S; x++) {
+        if (!lvl.hasWallV(x, z)) continue;
+        const wx = lvl.worldX(x) - half;
+        walls.push(wx, lvl.worldZ(z) - half, wx, lvl.worldZ(z) + half);
+      }
+    }
+    for (let x = 0; x < S; x++) {
+      for (let z = 0; z <= S; z++) {
+        if (!lvl.hasWallH(x, z)) continue;
+        const wz = lvl.worldZ(z) - half;
+        walls.push(lvl.worldX(x) - half, wz, lvl.worldX(x) + half, wz);
+      }
+    }
+    this.minimapWalls = new Float32Array(walls);
+
+    const pillars: number[] = [];
+    for (let z = 0; z < S; z++) {
+      for (let x = 0; x < S; x++) {
+        if (lvl.cell(x, z) === PILLAR) pillars.push(lvl.worldX(x), lvl.worldZ(z));
+      }
+    }
+    this.minimapPillars = new Float32Array(pillars);
+  }
+
   /* ------------------------------- HUD ------------------------------- */
 
   private pushHud(force = false) {
@@ -826,6 +891,7 @@ export class Engine {
     if (this.cheats.noclip) active.push("NOCLIP");
     if (this.cheats.fullbright) active.push("BRIGHT");
     if (this.cheats.freeze) active.push("FROZEN");
+    if (this.cheats.map) active.push("MAP");
     this.callbacks.onHud({
       pages: this.items.collected,
       totalPages: TOTAL_PAGES,
@@ -839,6 +905,26 @@ export class Engine {
       flashlight: this.player.flashlightOn,
       sneaking: this.player.sneaking,
       cheats: active.length > 0 ? active.join(" · ") : null,
+      mapCheat: this.cheats.map,
+    });
+    this.callbacks.onMinimap({
+      halfExtent: (this.level.size / 2) * CELL,
+      walls: this.minimapWalls,
+      pillars: this.minimapPillars,
+      player: { x: this.player.pos.x, z: this.player.pos.z, yaw: this.player.yaw },
+      pages: this.items.pages.map((p) => ({
+        x: p.basePos.x,
+        z: p.basePos.z,
+        collected: p.collected,
+      })),
+      exit: {
+        x: this.level.exit.doorPos.x,
+        z: this.level.exit.doorPos.z,
+        open: this.items.exitOpen,
+      },
+      entity: this.entity.state === "dormant"
+        ? null
+        : { x: this.entity.pos.x, z: this.entity.pos.z },
     });
   }
 
