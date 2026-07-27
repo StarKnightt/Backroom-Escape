@@ -133,6 +133,13 @@ export class Items {
     return this.collected >= Math.min(TOTAL_PAGES, this.pages.length);
   }
 
+  /** Same cell, or an unobstructed straight line to it through the maze walls. */
+  private hasLOS(a: THREE.Vector3, b: THREE.Vector3): boolean {
+    const ca = this.level.cellOf(a.x, a.z);
+    const cb = this.level.cellOf(b.x, b.z);
+    return this.level.lineOfSight(ca.x, ca.z, cb.x, cb.z);
+  }
+
   /** Cheap cone test — what the player could grab right now. */
   findInteractable(camPos: THREE.Vector3, camDir: THREE.Vector3): Interactable | null {
     for (let i = 0; i < this.pages.length; i++) {
@@ -140,7 +147,9 @@ export class Items {
       if (p.collected) continue;
       const to = this.vTo.subVectors(p.mesh.position, camPos);
       const d = to.length();
-      if (d < 2.6 && to.normalize().dot(camDir) > 0.8) {
+      // Wall-thin gap between two rooms can put a page within range+cone
+      // without it actually being visible — LOS keeps the prompt honest.
+      if (d < 2.6 && to.normalize().dot(camDir) > 0.8 && this.hasLOS(camPos, p.mesh.position)) {
         return { type: "page", index: i, label: "TAKE PAGE" };
       }
     }
@@ -149,7 +158,7 @@ export class Items {
       if (w.taken) continue;
       const to = this.vTo.subVectors(w.group.position, camPos);
       const d = to.length();
-      if (d < 2.4 && to.normalize().dot(camDir) > 0.78) {
+      if (d < 2.4 && to.normalize().dot(camDir) > 0.78 && this.hasLOS(camPos, w.group.position)) {
         return { type: "water", index: i, label: "DRINK ALMOND WATER" };
       }
     }
