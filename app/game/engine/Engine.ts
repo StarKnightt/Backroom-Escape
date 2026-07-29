@@ -149,14 +149,16 @@ export class Engine {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.2;
 
-    const fogColor = new THREE.Color(0x141106);
+    const fogColor = new THREE.Color(0x100c07);
     this.scene.background = fogColor;
-    this.scene.fog = new THREE.FogExp2(fogColor, 0.036);
+    this.scene.fog = new THREE.FogExp2(fogColor, 0.032);
 
-    // The mono-yellow wash: ceiling glow above, carpet bounce below.
-    // Level 0 is BRIGHT — the horror is the emptiness, not the dark.
-    this.scene.add(new THREE.AmbientLight(0x3a3420, 0.85));
-    this.scene.add(new THREE.HemisphereLight(0xfff0c2, 0x4a3f24, 0.5));
+    // A stairwell at 22:37. The hemisphere is deliberately upside down: its
+    // "ground" color lands on downward-facing surfaces, i.e. the ceiling,
+    // which in a corridor like this is the brightest thing in frame. The sky
+    // color falls on the terrazzo, where the bounce is grey and cold.
+    this.scene.add(new THREE.AmbientLight(0x3a331f, 0.6));
+    this.scene.add(new THREE.HemisphereLight(0x8b8478, 0xffeec7, 0.42));
 
     this.level = new Level(seed);
     this.level.build(this.scene);
@@ -176,7 +178,7 @@ export class Engine {
     this.items = new Items(this.level, seed, this.scene);
 
     for (let i = 0; i < POOL_SIZE; i++) {
-      const l = new THREE.PointLight(0xffeebb, 0, 13, 1.8);
+      const l = new THREE.PointLight(0xffe6b2, 0, 13, 1.8);
       this.lightPool.push(l);
       this.scene.add(l);
     }

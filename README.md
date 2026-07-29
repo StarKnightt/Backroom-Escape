@@ -10,9 +10,10 @@ image or audio files in this project.
 ## The game
 
 You tripped through a wrong corner of reality, and the world healed shut
-behind you. Level 0: an endless office of mono-yellow wallpaper, damp
-carpet and buzzing fluorescent light. Someone was here before you — they
-left pages pinned to the walls.
+behind you. Level 0 wears the face of an old apartment block at half past
+eleven: cream plaster corridors, varnished timber skirting, polished
+terrazzo underfoot, and door after door after door — none of which open.
+Someone was here before you — they left pages pinned to the walls.
 
 - **Find all 8 journal pages** pinned to the walls. The other scrawls —
   stick figures, spirals, tallies, red handprints — are from whoever was
@@ -73,14 +74,20 @@ what's on.
 
 ## Tech highlights
 
-- **Authentic Level 0 layout** — one huge open floor "randomly segmented"
-  into rooms by thin partition walls (recursive division with door gaps),
-  exactly like the original 2002 photo: chevron wallpaper, beige carpet,
-  drop ceiling, columns of rectangular fluorescent fixtures. **Every room
-  is enterable** — wall-aware BFS guarantees full connectivity.
-- **Procedural PBR textures** — chevron wallpaper, carpet, ceiling tiles,
-  doors and the entity's skin are painted onto canvases at boot (albedo +
-  normal maps derived via Sobel-filtered height fields + roughness maps).
+- **Residential-block Level 0** — one huge floor "randomly segmented" into
+  rooms and one-cell corridors by thin partition walls (recursive division
+  with door gaps): cream gotelé plaster, white plaster ceiling, polished
+  terrazzo, surface-mounted fluorescent battens running the length of every
+  corridor. **Every room is enterable** — wall-aware BFS guarantees full
+  connectivity.
+- **A thousand flats that never open** — hardwood doors with sunken panels,
+  timber architraves, brass levers, letter plates, vents over the lintel
+  and taped-up notices, all merged into a handful of draw calls. The
+  building's hardware too: fire hose cabinets, locked meter boxes,
+  extinguishers on their brackets.
+- **Procedural PBR textures** — plaster, terrazzo, ceiling, doors, fittings
+  and the entity's skin are painted onto canvases at boot (albedo + normal
+  maps derived via Sobel-filtered height fields + roughness maps).
 - **Full 3D player character** — articulated body (hips, knees) visible
   when you look down, plus a first-person fist gripping a black torch:
   four articulated fingers (proximal/middle/distal segments with knuckle
