@@ -298,16 +298,16 @@ export class GameAudio {
     const t = ctx.currentTime;
     const vol = sprinting ? 0.17 : 0.1;
 
-    // Carpet scuff.
+    // Shoe on polished terrazzo: a hard, bright slap, not a carpet scuff.
     const src = this.noiseSource();
-    src.playbackRate.value = 0.7 + Math.random() * 0.5;
+    src.playbackRate.value = 1 + Math.random() * 0.7;
     const bp = ctx.createBiquadFilter();
     bp.type = "bandpass";
-    bp.frequency.value = 700 + Math.random() * 500;
-    bp.Q.value = 0.8;
+    bp.frequency.value = 2100 + Math.random() * 1300;
+    bp.Q.value = 1.6;
     const g = ctx.createGain();
     g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
     src.connect(bp);
     bp.connect(g);
     g.connect(this.sfx);

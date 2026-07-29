@@ -1,18 +1,28 @@
 import * as THREE from "three";
 import { mulberry32, Rand, randInt, shuffle } from "./rng";
 import {
-  makeCarpetMaps,
+  DOOR_VARIANTS,
+  NOTICE_VARIANTS,
   makeCeilingMaps,
+  makeDoorAtlasTexture,
+  makeDoorPlaqueTexture,
   makeDoorTexture,
   makeExitSignTexture,
   makeFalseExitSignTexture,
+  makeFireCabinetTexture,
+  makeFloorMaps,
   makeLightPanelTexture,
+  makeMeterPanelTexture,
+  makeNoticeAtlasTexture,
+  makeSafetySignTexture,
+  makeTrimMaps,
+  makeVentGrilleTexture,
   makeWallArtTexture,
   makeWallMaps,
 } from "./textures";
 
-export const CELL = 4; // meters per grid cell
-export const WALL_H = 3; // ceiling height
+export const CELL = 3.2; // meters per grid cell — corridor width
+export const WALL_H = 2.7; // ceiling height
 export const WALL_HALF = 0.12; // partition walls are 24cm thick
 const PILLAR_HALF = 0.55;
 
@@ -27,6 +37,8 @@ export interface Fixture {
   /** 0..1 — how strongly the entity's presence is suppressing this light */
   aura: number;
   phase: number;
+  /** batten rotation — tubes run along the corridor they light */
+  yaw: number;
   /** HDR panel color — mono-yellow except inside hue anomaly zones */
   base: [number, number, number];
 }
@@ -65,6 +77,48 @@ class GeoBuilder {
     this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
 
+  /**
+   * Axis-aligned box from center + half extents. UVs are world-scaled by
+   * `uvScale` so a tiling wood/plaster map runs continuously across it.
+   */
+  box(
+    cx: number, cy: number, cz: number,
+    hx: number, hy: number, hz: number,
+    uvScale = 1,
+  ) {
+    const x0 = cx - hx, x1 = cx + hx;
+    const y0 = cy - hy, y1 = cy + hy;
+    const z0 = cz - hz, z1 = cz + hz;
+    const s = uvScale;
+    // +X / -X
+    this.quad(
+      [x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [1, 0, 0],
+      [[z1 * s, y0 * s], [z0 * s, y0 * s], [z0 * s, y1 * s], [z1 * s, y1 * s]],
+    );
+    this.quad(
+      [x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0],
+      [[z0 * s, y0 * s], [z1 * s, y0 * s], [z1 * s, y1 * s], [z0 * s, y1 * s]],
+    );
+    // +Z / -Z
+    this.quad(
+      [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1],
+      [[x0 * s, y0 * s], [x1 * s, y0 * s], [x1 * s, y1 * s], [x0 * s, y1 * s]],
+    );
+    this.quad(
+      [x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1],
+      [[x1 * s, y0 * s], [x0 * s, y0 * s], [x0 * s, y1 * s], [x1 * s, y1 * s]],
+    );
+    // +Y / -Y
+    this.quad(
+      [x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0],
+      [[x0 * s, z1 * s], [x1 * s, z1 * s], [x1 * s, z0 * s], [x0 * s, z0 * s]],
+    );
+    this.quad(
+      [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [0, -1, 0],
+      [[x0 * s, z0 * s], [x1 * s, z0 * s], [x1 * s, z1 * s], [x0 * s, z1 * s]],
+    );
+  }
+
   build(): THREE.BufferGeometry {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(this.pos, 3));
@@ -96,6 +150,19 @@ export class Level {
   waterSpots: THREE.Vector3[] = [];
   /** red ceiling EXIT signs that point at nothing */
   falseExits: { pos: THREE.Vector3; yaw: number }[] = [];
+  /**
+   * Flat doors set into the partitions. `pos` sits on the wall face at floor
+   * level, `normal` points out of the wall into the room you see it from.
+   * None of them open. That is the point.
+   */
+  doorSpots: { pos: THREE.Vector3; normal: THREE.Vector3; variant: number }[] = [];
+  /** hose cabinets, meter boxes, extinguishers and taped-up notices */
+  fittingSpots: {
+    pos: THREE.Vector3;
+    normal: THREE.Vector3;
+    kind: "hose" | "meter" | "extinguisher" | "notice";
+    variant: number;
+  }[] = [];
   spawn = new THREE.Vector3();
   spawnCell = { x: 0, z: 0 };
   entitySpawnCell = { x: 0, z: 0 };
@@ -105,6 +172,10 @@ export class Level {
   private rng: Rand;
   private panelMesh!: THREE.InstancedMesh;
   private distFromSpawn!: Int32Array;
+  /** cells already carrying a page or a scrawl — apartment doors keep clear */
+  private decalCells = new Set<number>();
+  /** sampled wall faces left over after the doors — fittings hang on these */
+  private freeFaces: { x: number; z: number; nx: number; nz: number }[] = [];
 
   constructor(public seed: number) {
     this.rng = mulberry32(seed);
@@ -223,7 +294,7 @@ export class Level {
       const h = z1 - z0 + 1;
       if (w < 3 && h < 3) return;
       // Sometimes leave a larger hall un-divided.
-      if (w * h <= 30 && rng() < 0.3 && depth > 2) return;
+      if (w * h <= 24 && rng() < 0.16 && depth > 2) return;
 
       const vertical = w === h ? rng() < 0.5 : w > h;
       if (vertical && w >= 3) {
@@ -339,6 +410,7 @@ export class Level {
       const wall = this.adjacentWall(cand.x, cand.z);
       if (!wall) return false;
       chosen.push(cand);
+      this.decalCells.add(cand.z * S + cand.x);
       const inset = CELL / 2 - WALL_HALF - 0.03;
       const lateral = (this.rng() - 0.5) * 2.2;
       this.pageSpots.push({
@@ -395,6 +467,7 @@ export class Level {
       if (artCells.some((p) => Math.abs(p.x - cand.x) + Math.abs(p.z - cand.z) < 3)) continue;
       const wall = this.adjacentWall(cand.x, cand.z)!;
       artCells.push(cand);
+      this.decalCells.add(cand.z * S + cand.x);
       const inset = CELL / 2 - WALL_HALF - 0.015;
       const lateral = (this.rng() - 0.5) * 2.0;
       this.artSpots.push({
@@ -453,8 +526,9 @@ export class Level {
     const e = farPool[randInt(rng, 0, farPool.length - 1)];
     this.entitySpawnCell = { x: e.x, z: e.z };
 
-    // 10) The "visible column of rectangular light fixtures": a regular
-    // 8m lattice with jitter, some flickering, whole patches dead.
+    // 10) Ceiling battens: a regular lattice through the open rooms, plus a
+    // guaranteed run down every one-cell corridor — a corridor whose lattice
+    // parity happened to miss it would otherwise be pitch black end to end.
     const darkZones: { x: number; z: number; r: number }[] = [];
     for (let i = 0; i < 6; i++) {
       const zc = reachable[randInt(rng, Math.floor(reachable.length * 0.3), reachable.length - 1)];
@@ -464,7 +538,18 @@ export class Level {
     for (let z = 0; z < S; z++) {
       for (let x = 0; x < S; x++) {
         if (this.cell(x, z) !== OPEN) continue;
-        if ((x % 2 !== 1 || z % 2 !== 1) && !(x % 2 === 0 && z % 2 === 0 && rng() < 0.07)) continue;
+        // A batten runs the length of its corridor: walls north+south mean
+        // the run is east-west, so the tube lies along X.
+        const eastWest = this.hasWallH(x, z) && this.hasWallH(x, z + 1);
+        const northSouth = this.hasWallV(x, z) && this.hasWallV(x + 1, z);
+        const lattice = x % 2 === 1 && z % 2 === 1;
+        const corridorSlot = eastWest
+          ? x % 2 === 1
+          : northSouth
+            ? z % 2 === 1
+            : false;
+        if (!lattice && !corridorSlot &&
+            !(x % 2 === 0 && z % 2 === 0 && rng() < 0.07)) continue;
         if (rng() < 0.1) continue; // randomly missing
         const inDark = darkZones.some(
           (zn) => (zn.x - x) * (zn.x - x) + (zn.z - z) * (zn.z - z) <= zn.r * zn.r,
@@ -482,7 +567,8 @@ export class Level {
           state,
           aura: 0,
           phase: rng() * 100,
-          base: [1.9, 1.75, 1.35],
+          yaw: northSouth && !eastWest ? Math.PI / 2 : 0,
+          base: [1.95, 1.72, 1.24],
         });
       }
     }
@@ -533,6 +619,106 @@ export class Level {
     }
 
     this.computeExit(exitCell);
+    this.placeApartmentDoors();
+  }
+
+  /**
+   * Line the partitions with flats. Every wall face bordering a room is a
+   * candidate; roughly a third get a door, at most two per cell so a small
+   * room doesn't turn into a showroom. Pages and scrawls own their cell —
+   * doors stay off those so nothing overlaps a pickup.
+   */
+  private placeApartmentDoors() {
+    const S = this.size;
+    const rng = this.rng;
+    const inset = CELL / 2 - WALL_HALF; // distance from cell center to wall face
+    const ex = this.exit.cell;
+
+    for (let z = 0; z < S; z++) {
+      for (let x = 0; x < S; x++) {
+        if (this.cell(x, z) !== OPEN) continue;
+        if (this.decalCells.has(z * S + x)) continue;
+        if (Math.abs(x - ex.x) + Math.abs(z - ex.z) <= 1) continue; // the way out stands alone
+
+        // normals point out of the wall, into this cell
+        const faces: { has: boolean; n: [number, number] }[] = [
+          { has: this.hasWallV(x, z), n: [1, 0] },
+          { has: this.hasWallV(x + 1, z), n: [-1, 0] },
+          { has: this.hasWallH(x, z), n: [0, 1] },
+          { has: this.hasWallH(x, z + 1), n: [0, -1] },
+        ];
+        let placed = 0;
+        for (const f of faces) {
+          if (!f.has) continue;
+          if (placed >= 2 || rng() > 0.4) {
+            // Left bare — remember a sample of these for the fittings pass.
+            if (rng() < 0.12) {
+              this.freeFaces.push({ x, z, nx: f.n[0], nz: f.n[1] });
+            }
+            continue;
+          }
+          placed++;
+          const [nx, nz] = f.n;
+          // slight jitter along the wall — nothing in this building is square
+          const lateral = (rng() - 0.5) * 0.3;
+          this.doorSpots.push({
+            pos: new THREE.Vector3(
+              this.worldX(x) - nx * inset - nz * lateral,
+              0,
+              this.worldZ(z) - nz * inset + nx * lateral,
+            ),
+            normal: new THREE.Vector3(nx, 0, nz),
+            variant: randInt(rng, 0, DOOR_VARIANTS - 1),
+          });
+        }
+      }
+    }
+    this.placeFittings();
+  }
+
+  /**
+   * Hang the building's hardware on the bare wall faces: hose cabinets,
+   * locked meter boxes, extinguishers standing in a corner, and the
+   * residents' association's endless typed notices. Each kind is spread out
+   * so you never round a corner into a wall of extinguishers.
+   */
+  private placeFittings() {
+    const rng = this.rng;
+    const inset = CELL / 2 - WALL_HALF;
+    const pool = shuffle(rng, this.freeFaces.slice());
+    const taken: { x: number; z: number; kind: string }[] = [];
+
+    const wanted: [typeof this.fittingSpots[number]["kind"], number, number][] = [
+      // kind, how many, how far apart (cells) from another of its kind
+      ["hose", 12, 9],
+      ["meter", 18, 7],
+      ["extinguisher", 24, 6],
+      ["notice", 34, 4],
+    ];
+
+    for (const [kind, count, spacing] of wanted) {
+      let placed = 0;
+      for (const f of pool) {
+        if (placed >= count) break;
+        if (taken.some(
+          (t) => (t.kind === kind || Math.abs(t.x - f.x) + Math.abs(t.z - f.z) < 2) &&
+                 Math.abs(t.x - f.x) + Math.abs(t.z - f.z) < spacing,
+        )) continue;
+        taken.push({ x: f.x, z: f.z, kind });
+        placed++;
+        const lateral = (rng() - 0.5) * 0.7;
+        this.fittingSpots.push({
+          pos: new THREE.Vector3(
+            this.worldX(f.x) - f.nx * inset + f.nz * lateral,
+            0,
+            this.worldZ(f.z) - f.nz * inset - f.nx * lateral,
+          ),
+          normal: new THREE.Vector3(f.nx, 0, f.nz),
+          kind,
+          variant: randInt(rng, 0, NOTICE_VARIANTS - 1),
+        });
+      }
+    }
   }
 
   /** Returns the normal (pointing INTO the cell) of a wall on this cell's edge. */
@@ -571,7 +757,7 @@ export class Level {
   build(scene: THREE.Scene) {
     const seed = this.seed;
     const wall = makeWallMaps(seed);
-    const carpet = makeCarpetMaps(seed);
+    const floor = makeFloorMaps(seed);
     const ceiling = makeCeilingMaps(seed);
 
     const wallMat = new THREE.MeshStandardMaterial({
@@ -580,11 +766,14 @@ export class Level {
       roughnessMap: wall.roughnessMap,
       normalScale: new THREE.Vector2(0.8, 0.8),
     });
+    // Polished terrazzo: a touch of metalness sharpens the specular streak
+    // the ceiling tubes smear down the corridor.
     const floorMat = new THREE.MeshStandardMaterial({
-      map: carpet.map,
-      normalMap: carpet.normalMap,
-      roughnessMap: carpet.roughnessMap,
-      normalScale: new THREE.Vector2(0.6, 0.6),
+      map: floor.map,
+      normalMap: floor.normalMap,
+      roughnessMap: floor.roughnessMap,
+      normalScale: new THREE.Vector2(0.35, 0.35),
+      metalness: 0.12,
     });
     const ceilMat = new THREE.MeshStandardMaterial({
       map: ceiling.map,
@@ -608,7 +797,9 @@ export class Level {
     ceils.quad(
       [min, WALL_H, min], [max, WALL_H, min], [max, WALL_H, max], [min, WALL_H, max],
       [0, -1, 0],
-      [[min / 2.4, min / 2.4], [max / 2.4, min / 2.4], [max / 2.4, max / 2.4], [min / 2.4, max / 2.4]],
+      // 4.6m repeat — deliberately off the 4m cell grid so the tiling never
+      // lines up with the corridors you sight down.
+      [[min / 4.6, min / 4.6], [max / 4.6, min / 4.6], [max / 4.6, max / 4.6], [min / 4.6, max / 4.6]],
     );
 
     const walls = new GeoBuilder();
@@ -726,11 +917,283 @@ export class Level {
     this.group.add(floorMesh, ceilMesh, wallMesh);
 
     this.buildFixtures();
+    const notices = new GeoBuilder();
+    this.buildApartmentDoors(notices);
+    this.buildFittings(notices);
     this.buildWallArt();
     this.buildFalseExits();
     this.buildExit();
 
     scene.add(this.group);
+  }
+
+  /**
+   * The flats. Every door in the building is one merged slab mesh plus one
+   * merged architrave mesh, so the whole corridor costs two draw calls;
+   * handles and letter plates ride along as instanced meshes.
+   */
+  private buildApartmentDoors(notices: GeoBuilder) {
+    if (this.doorSpots.length === 0) return;
+    const n = this.doorSpots.length;
+
+    const HW = 0.5; // door half width
+    const DH = 2.06; // door height
+    const FB = 0.1; // architrave board width
+    const FT = 0.028; // architrave half thickness — how far it stands proud
+    const EPS = 0.008; // slab sits just off the plaster
+
+    const slabs = new GeoBuilder();
+    const frames = new GeoBuilder();
+    const brass = new GeoBuilder();
+    const vents = new GeoBuilder();
+    const dummy = new THREE.Object3D();
+
+    const plaqueMesh = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(0.085, 0.108),
+      new THREE.MeshStandardMaterial({
+        map: makeDoorPlaqueTexture(this.seed),
+        roughness: 0.72,
+      }),
+      n,
+    );
+
+    this.doorSpots.forEach((spot, i) => {
+      const { x: nx, z: nz } = spot.normal;
+      // Screen-right along the wall when you stand facing the door.
+      const tx = nz, tz = -nx;
+      const at = (lat: number, y: number, out: number): number[] => [
+        spot.pos.x + tx * lat + nx * out,
+        y,
+        spot.pos.z + tz * lat + nz * out,
+      ];
+
+      const u0 = spot.variant / DOOR_VARIANTS;
+      const u1 = (spot.variant + 1) / DOOR_VARIANTS;
+      slabs.quad(
+        at(-HW, 0, EPS), at(HW, 0, EPS), at(HW, DH, EPS), at(-HW, DH, EPS),
+        [nx, 0, nz],
+        [[u0, 0], [u1, 0], [u1, 1], [u0, 1]],
+      );
+
+      // Architrave: two jambs and a lintel, standing proud of the wall.
+      const half = (alongT: number, alongN: number) => ({
+        hx: Math.abs(tx) * alongT + Math.abs(nx) * alongN,
+        hz: Math.abs(tz) * alongT + Math.abs(nz) * alongN,
+      });
+      const jamb = half(FB / 2, FT);
+      for (const side of [-1, 1]) {
+        const c = at(side * (HW + FB / 2), 0, FT);
+        frames.box(c[0], (DH + FB) / 2, c[2], jamb.hx, (DH + FB) / 2, jamb.hz, 2);
+      }
+      const lint = half(HW + FB, FT);
+      const lc = at(0, 0, FT);
+      frames.box(lc[0], DH + FB / 2, lc[2], lint.hx, FB / 2, lint.hz, 2);
+
+      // Lever handle: a stub through the escutcheon and a bar turned back
+      // toward the middle of the door, the way every one of these sits.
+      const side = spot.variant % 2 === 0 ? 1 : -1;
+      const stubT = half(0.022, 0.028);
+      const sc = at(side * 0.32, 0, EPS + 0.028);
+      brass.box(sc[0], 1.02, sc[2], stubT.hx, 0.022, stubT.hz, 4);
+      const barT = half(0.058, 0.011);
+      const bc = at(side * 0.32 - side * 0.052, 0, EPS + 0.067);
+      brass.box(bc[0], 1.0, bc[2], barT.hx, 0.013, barT.hz, 4);
+
+      // Letter plate, screwed to the plaster beside the frame.
+      const pp = at(side * (HW + FB + 0.13), 0, 0.005);
+      dummy.position.set(pp[0], 1.62, pp[2]);
+      dummy.rotation.set(0, Math.atan2(nx, nz), 0, "YXZ");
+      dummy.updateMatrix();
+      plaqueMesh.setMatrixAt(i, dummy.matrix);
+
+      // Some flats vent their hallway over the door.
+      if (this.rng() < 0.32) {
+        const vw = 0.19, vy0 = DH + FB + 0.06, vh = 0.11;
+        vents.quad(
+          at(-vw, vy0, EPS), at(vw, vy0, EPS),
+          at(vw, vy0 + vh, EPS), at(-vw, vy0 + vh, EPS),
+          [nx, 0, nz],
+          [[0, 0], [1, 0], [1, 1], [0, 1]],
+        );
+      }
+      // …and someone tapes a notice to one door in eight.
+      if (this.rng() < 0.13) {
+        const v = randInt(this.rng, 0, NOTICE_VARIANTS - 1);
+        const nu0 = v / NOTICE_VARIANTS, nu1 = (v + 1) / NOTICE_VARIANTS;
+        const nw = 0.075, ny = 1.42, nh = 0.21;
+        const lat = -side * 0.12;
+        notices.quad(
+          at(lat - nw, ny, EPS + 0.004), at(lat + nw, ny, EPS + 0.004),
+          at(lat + nw, ny + nh, EPS + 0.004), at(lat - nw, ny + nh, EPS + 0.004),
+          [nx, 0, nz],
+          [[nu0, 0], [nu1, 0], [nu1, 1], [nu0, 1]],
+        );
+      }
+    });
+
+    plaqueMesh.instanceMatrix.needsUpdate = true;
+
+    const slabMesh = new THREE.Mesh(
+      slabs.build(),
+      new THREE.MeshStandardMaterial({
+        map: makeDoorAtlasTexture(this.seed),
+        roughness: 0.58, // varnish, long dulled
+        metalness: 0.05,
+      }),
+    );
+    slabMesh.receiveShadow = true;
+
+    const trim = makeTrimMaps(this.seed);
+    const frameMesh = new THREE.Mesh(
+      frames.build(),
+      new THREE.MeshStandardMaterial({
+        map: trim.map,
+        normalMap: trim.normalMap,
+        roughnessMap: trim.roughnessMap,
+        normalScale: new THREE.Vector2(0.4, 0.4),
+      }),
+    );
+    frameMesh.castShadow = true;
+    frameMesh.receiveShadow = true;
+
+    const brassMesh = new THREE.Mesh(
+      brass.build(),
+      new THREE.MeshStandardMaterial({ color: 0x9c7f3c, roughness: 0.38, metalness: 0.8 }),
+    );
+
+    this.group.add(slabMesh, frameMesh, brassMesh, plaqueMesh);
+
+    if (vents.idx.length > 0) {
+      this.group.add(
+        new THREE.Mesh(
+          vents.build(),
+          new THREE.MeshStandardMaterial({
+            map: makeVentGrilleTexture(),
+            roughness: 0.7,
+            metalness: 0.2,
+          }),
+        ),
+      );
+    }
+  }
+
+  /**
+   * Fire hose cabinets, meter boxes, extinguishers and the notices taped to
+   * the plaster. Bodies are instanced boxes; every printed face is a quad
+   * with its own small texture. The notices (walls and doors alike) merge
+   * into the single geometry handed in from build().
+   */
+  private buildFittings(notices: GeoBuilder) {
+    const dummy = new THREE.Object3D();
+    const byKind = (k: string) => this.fittingSpots.filter((f) => f.kind === k);
+    const hoses = byKind("hose");
+    const meters = byKind("meter");
+    const exts = byKind("extinguisher");
+
+    const steel = (color: number, rough = 0.55, metal = 0.35) =>
+      new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+    const printed = (map: THREE.CanvasTexture) =>
+      new THREE.MeshStandardMaterial({ map, roughness: 0.6, metalness: 0.15 });
+
+    /** Places one instanced part on a wall face. */
+    const place = (
+      mesh: THREE.InstancedMesh,
+      i: number,
+      spot: (typeof this.fittingSpots)[number],
+      y: number,
+      out: number,
+    ) => {
+      dummy.position.set(
+        spot.pos.x + spot.normal.x * out,
+        y,
+        spot.pos.z + spot.normal.z * out,
+      );
+      dummy.rotation.set(0, Math.atan2(spot.normal.x, spot.normal.z), 0, "YXZ");
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      mesh.instanceMatrix.needsUpdate = true;
+    };
+
+    if (hoses.length > 0) {
+      const body = new THREE.InstancedMesh(
+        new THREE.BoxGeometry(0.64, 0.6, 0.17), steel(0x9c1f18, 0.5, 0.3), hoses.length,
+      );
+      const face = new THREE.InstancedMesh(
+        new THREE.PlaneGeometry(0.58, 0.54), printed(makeFireCabinetTexture(this.seed)), hoses.length,
+      );
+      body.castShadow = true;
+      hoses.forEach((s, i) => {
+        place(body, i, s, 1.32, 0.085);
+        place(face, i, s, 1.32, 0.172);
+      });
+      this.group.add(body, face);
+    }
+
+    if (meters.length > 0) {
+      const body = new THREE.InstancedMesh(
+        new THREE.BoxGeometry(0.36, 0.46, 0.12), steel(0xa6a49c, 0.6, 0.45), meters.length,
+      );
+      const face = new THREE.InstancedMesh(
+        new THREE.PlaneGeometry(0.32, 0.42), printed(makeMeterPanelTexture(this.seed)), meters.length,
+      );
+      body.castShadow = true;
+      meters.forEach((s, i) => {
+        place(body, i, s, 1.52, 0.06);
+        place(face, i, s, 1.52, 0.122);
+      });
+      this.group.add(body, face);
+    }
+
+    if (exts.length > 0) {
+      // The bottle stands off the wall on its little bracket, sign above it.
+      const bottle = new THREE.InstancedMesh(
+        new THREE.CylinderGeometry(0.088, 0.088, 0.54, 12), steel(0xa81d14, 0.45, 0.35), exts.length,
+      );
+      const neck = new THREE.InstancedMesh(
+        new THREE.CylinderGeometry(0.03, 0.058, 0.17, 10), steel(0x1c1c1a, 0.6, 0.5), exts.length,
+      );
+      const sign = new THREE.InstancedMesh(
+        new THREE.PlaneGeometry(0.15, 0.2), printed(makeSafetySignTexture()), exts.length,
+      );
+      bottle.castShadow = true;
+      exts.forEach((s, i) => {
+        place(bottle, i, s, 0.29, 0.2);
+        place(neck, i, s, 0.63, 0.2);
+        place(sign, i, s, 1.38, 0.006);
+      });
+      this.group.add(bottle, neck, sign);
+    }
+
+    // Notices on the plaster, at the height a hand tapes them.
+    for (const s of this.fittingSpots) {
+      if (s.kind !== "notice") continue;
+      const { x: nx, z: nz } = s.normal;
+      const tx = nz, tz = -nx;
+      const at = (lat: number, y: number, out: number): number[] => [
+        s.pos.x + tx * lat + nx * out,
+        y,
+        s.pos.z + tz * lat + nz * out,
+      ];
+      const u0 = s.variant / NOTICE_VARIANTS, u1 = (s.variant + 1) / NOTICE_VARIANTS;
+      const w = 0.085, y0 = 1.35, h = 0.24;
+      notices.quad(
+        at(-w, y0, 0.006), at(w, y0, 0.006), at(w, y0 + h, 0.006), at(-w, y0 + h, 0.006),
+        [nx, 0, nz],
+        [[u0, 0], [u1, 0], [u1, 1], [u0, 1]],
+      );
+    }
+
+    if (notices.idx.length > 0) {
+      this.group.add(
+        new THREE.Mesh(
+          notices.build(),
+          new THREE.MeshStandardMaterial({
+            map: makeNoticeAtlasTexture(this.seed),
+            roughness: 0.9,
+          }),
+        ),
+      );
+    }
   }
 
   /** Ink drawings from previous visitors, decaled onto partition walls. */
@@ -756,21 +1219,29 @@ export class Level {
   private buildFixtures() {
     const n = this.fixtures.length;
 
-    const panelGeo = new THREE.PlaneGeometry(1.25, 0.65);
+    // Surface-mounted fluorescent battens, screwed straight to the slab —
+    // no suspended grid in a building like this.
+    const panelGeo = new THREE.PlaneGeometry(1.22, 0.115);
     panelGeo.rotateX(Math.PI / 2); // face down
     const panelMat = new THREE.MeshBasicMaterial({ map: makeLightPanelTexture() });
     this.panelMesh = new THREE.InstancedMesh(panelGeo, panelMat, n);
 
-    const frameGeo = new THREE.BoxGeometry(1.35, 0.07, 0.75);
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x23231f, roughness: 0.9 });
+    const frameGeo = new THREE.BoxGeometry(1.3, 0.075, 0.17);
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0xbfb9a6, roughness: 0.75 });
     const frameMesh = new THREE.InstancedMesh(frameGeo, frameMat, n);
 
     const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler();
+    const one = new THREE.Vector3(1, 1, 1);
+    const p = new THREE.Vector3();
     const col = new THREE.Color();
     for (const f of this.fixtures) {
-      m.makeTranslation(f.pos.x, f.pos.y, f.pos.z);
+      q.setFromEuler(e.set(0, f.yaw, 0));
+      // diffuser hangs just clear of the housing's underside
+      m.compose(p.set(f.pos.x, f.pos.y - 0.079, f.pos.z), q, one);
       this.panelMesh.setMatrixAt(f.index, m);
-      m.makeTranslation(f.pos.x, f.pos.y + 0.03, f.pos.z);
+      m.compose(p.set(f.pos.x, f.pos.y - 0.04, f.pos.z), q, one);
       frameMesh.setMatrixAt(f.index, m);
       if (f.state === "off") col.setRGB(0.012, 0.012, 0.01);
       else col.setRGB(f.base[0], f.base[1], f.base[2]); // HDR — feeds bloom
