@@ -105,10 +105,13 @@ export class GameFX {
     this.composer = new EffectComposer(renderer);
     this.composer.addPass(new RenderPass(scene, camera));
 
+    // Bloom runs at quarter resolution: it is a wide blur of the brightest
+    // pixels, so nobody can tell it was sampled small, and it is ~13 extra
+    // full-screen passes we would otherwise pay at full size.
     this.bloom = new UnrealBloomPass(
-      new THREE.Vector2(width / 2, height / 2),
-      0.5, // strength — restrained; we want glow, not glamour
-      0.55,
+      new THREE.Vector2(width / 4, height / 4),
+      0.32, // strength — the tubes were glaring; this is a halo, not a flare
+      0.6,
       0.95, // threshold: only the tubes and signs bloom, never lit plaster
     );
     this.composer.addPass(this.bloom);
@@ -130,7 +133,7 @@ export class GameFX {
       1 / (width * pixelRatio),
       1 / (height * pixelRatio),
     );
-    this.bloom.resolution.set(width / 2, height / 2);
+    this.bloom.resolution.set(width / 4, height / 4);
   }
 
   update(

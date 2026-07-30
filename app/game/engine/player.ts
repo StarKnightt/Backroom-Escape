@@ -59,17 +59,24 @@ export class Player {
 
   constructor(private level: Level, aspect: number) {
     this.pos = level.spawn.clone();
-    this.camera = new THREE.PerspectiveCamera(72, aspect, 0.05, 90);
+    // Far plane pulled in to where the fog has already closed: at 55m the
+    // exponential fog leaves ~4% of the original colour, so nothing is lost
+    // visually, and the frustum stops reaching halfway across the maze —
+    // which is what lets the per-tile culling actually reject anything. The
+    // scene background is the fog colour, so the cut is seamless.
+    this.camera = new THREE.PerspectiveCamera(72, aspect, 0.05, 55);
     this.camera.rotation.order = "YXZ";
 
     // Face away from the nearest wall at spawn.
     this.yaw = Math.PI * 0.25;
 
     // Flashlight rides in a rig that lags the camera — hand-held feel.
-    this.flashlight = new THREE.SpotLight(0xfff3d6, 46, 28, 0.4, 0.5, 1.5);
+    this.flashlight = new THREE.SpotLight(0xfff3d6, 30, 24, 0.4, 0.5, 1.5);
     this.flashlight.position.set(0.18, -0.22, 0.05);
     this.flashlight.castShadow = true;
-    this.flashlight.shadow.mapSize.set(1024, 1024);
+    // 512 is plenty for a torch beam: the shadow is soft, close range, and
+    // constantly moving — and it halves the depth pass this light costs.
+    this.flashlight.shadow.mapSize.set(512, 512);
     this.flashlight.shadow.camera.near = 0.2;
     this.flashlight.shadow.camera.far = 20;
     this.flashlight.shadow.bias = -0.004;

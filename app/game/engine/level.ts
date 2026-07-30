@@ -180,6 +180,99 @@ class GeoBuilder {
   }
 }
 
+/** Side of a culling tile, in meters. Fog eats the corridor by ~26m, so a
+ *  tile this size keeps 4-8 of them alive in a typical view. */
+const CHUNK = CELL * 5;
+
+/**
+ * A GeoBuilder that sorts what it is handed into a coarse world grid and
+ * emits one mesh per occupied tile.
+ *
+ * A single merged mesh spanning the whole maze can never be frustum culled —
+ * its bounding sphere always intersects the view — so the building's entire
+ * set of walls and all ~1,200 door architraves were being submitted on every
+ * frame, whatever the player was looking at. Chunked, only the handful of
+ * tiles actually in front of the camera survive the cull.
+ *
+ * Routing happens in `quad`, so everything built on top of it (`box`,
+ * `boardBox`) is chunked for free.
+ */
+class ChunkedGeo extends GeoBuilder {
+  private chunks = new Map<string, GeoBuilder>();
+
+  override quad(
+    a: number[], b: number[], c: number[], d: number[],
+    n: number[],
+    uvs: [number, number][],
+  ) {
+    const cx = (a[0] + b[0] + c[0] + d[0]) * 0.25;
+    const cz = (a[2] + b[2] + c[2] + d[2]) * 0.25;
+    const key = `${Math.floor(cx / CHUNK)},${Math.floor(cz / CHUNK)}`;
+    let g = this.chunks.get(key);
+    if (g === undefined) {
+      g = new GeoBuilder();
+      this.chunks.set(key, g);
+    }
+    g.quad(a, b, c, d, n, uvs);
+  }
+
+  get isEmpty() {
+    return this.chunks.size === 0;
+  }
+
+  /** One mesh per occupied tile, all sharing `material`. */
+  meshes(material: THREE.Material, decorate?: (m: THREE.Mesh) => void): THREE.Mesh[] {
+    const out: THREE.Mesh[] = [];
+    for (const g of this.chunks.values()) {
+      if (g.idx.length === 0) continue;
+      const mesh = new THREE.Mesh(g.build(), material);
+      decorate?.(mesh);
+      out.push(mesh);
+    }
+    return out;
+  }
+}
+
+/**
+ * The same trick for instanced meshes. An InstancedMesh is culled as one
+ * object, so a single batch holding every door knob in the building is drawn
+ * in full no matter where the player stands — which, at ~1,200 turned knobs,
+ * was three quarters of the level's triangles submitted every frame. Bucket
+ * the instances by tile and each batch gets a bounding sphere small enough
+ * for the frustum to reject.
+ */
+class ChunkedInstances {
+  private chunks = new Map<string, THREE.Matrix4[]>();
+
+  add(x: number, z: number, matrix: THREE.Matrix4) {
+    const key = `${Math.floor(x / CHUNK)},${Math.floor(z / CHUNK)}`;
+    let list = this.chunks.get(key);
+    if (list === undefined) {
+      list = [];
+      this.chunks.set(key, list);
+    }
+    list.push(matrix.clone());
+  }
+
+  meshes(
+    geometry: THREE.BufferGeometry,
+    material: THREE.Material,
+    decorate?: (m: THREE.InstancedMesh) => void,
+  ): THREE.InstancedMesh[] {
+    const out: THREE.InstancedMesh[] = [];
+    for (const list of this.chunks.values()) {
+      if (list.length === 0) continue;
+      const mesh = new THREE.InstancedMesh(geometry, material, list.length);
+      for (let i = 0; i < list.length; i++) mesh.setMatrixAt(i, list[i]);
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+      decorate?.(mesh);
+      out.push(mesh);
+    }
+    return out;
+  }
+}
+
 /**
  * Authentic Level 0: one huge open floor "randomly segmented" by thin
  * partition walls (recursive division with door gaps), so EVERY room is
@@ -619,7 +712,9 @@ export class Level {
           aura: 0,
           phase: rng() * 100,
           yaw: northSouth && !eastWest ? Math.PI / 2 : 0,
-          base: [1.95, 1.72, 1.24],
+          // HDR, but only just over the bloom threshold — at 1.95 every
+          // batten in the corridor flared into a white smear.
+          base: [1.34, 1.18, 0.86],
         });
       }
     }
@@ -635,8 +730,8 @@ export class Level {
     // 10.3) Hue anomalies: two or three deep pockets where the fluorescents
     // burn the wrong color — a sick red, a pale hospital green. The rest of
     // Level 0 stays canonically mono-yellow.
-    const RED: [number, number, number] = [1.95, 0.4, 0.3];
-    const GREEN: [number, number, number] = [1.0, 1.8, 0.75];
+    const RED: [number, number, number] = [1.4, 0.29, 0.22];
+    const GREEN: [number, number, number] = [0.72, 1.3, 0.54];
     const deepFixtures = this.fixtures.filter(
       (f) => f.pos.distanceToSquared(this.spawn) > 625, // >25m out
     );
@@ -853,7 +948,7 @@ export class Level {
       [[min / 4.6, min / 4.6], [max / 4.6, min / 4.6], [max / 4.6, max / 4.6], [min / 4.6, max / 4.6]],
     );
 
-    const walls = new GeoBuilder();
+    const walls = new ChunkedGeo();
     const T = WALL_HALF;
 
     // Vertical (north-south running) partitions on cell west/east edges.
@@ -962,18 +1057,29 @@ export class Level {
     floorMesh.receiveShadow = true;
     const ceilMesh = new THREE.Mesh(ceils.build(), ceilMat);
     ceilMesh.receiveShadow = true;
-    const wallMesh = new THREE.Mesh(walls.build(), wallMat);
-    wallMesh.castShadow = true;
-    wallMesh.receiveShadow = true;
-    this.group.add(floorMesh, ceilMesh, wallMesh);
+    this.group.add(floorMesh, ceilMesh);
+    for (const m of walls.meshes(wallMat, (m) => {
+      m.castShadow = true;
+      m.receiveShadow = true;
+    })) {
+      this.group.add(m);
+    }
 
     this.buildFixtures();
-    const notices = new GeoBuilder();
+    const notices = new ChunkedGeo();
     this.buildApartmentDoors(notices);
     this.buildFittings(notices);
     this.buildWallArt();
     this.buildFalseExits();
     this.buildExit();
+
+    // The building never moves. Splitting it into cullable tiles means the
+    // renderer now walks ~900 objects a frame instead of ~170, and rebuilding
+    // a world matrix for each of them is pure waste — bake them once.
+    this.group.updateMatrixWorld(true);
+    this.group.traverse((o) => {
+      o.matrixAutoUpdate = false;
+    });
 
     scene.add(this.group);
   }
@@ -983,9 +1089,8 @@ export class Level {
    * merged architrave mesh, so the whole corridor costs two draw calls;
    * handles and letter plates ride along as instanced meshes.
    */
-  private buildApartmentDoors(notices: GeoBuilder) {
+  private buildApartmentDoors(notices: ChunkedGeo) {
     if (this.doorSpots.length === 0) return;
-    const n = this.doorSpots.length;
 
     const HW = 0.42; // door half width — 84cm leaf
     const DH = 2.03; // door height
@@ -993,19 +1098,16 @@ export class Level {
     const FT = 0.032; // architrave half thickness — how far it stands proud
     const EPS = 0.008; // leaf sits just off the plaster, deep in its reveal
 
-    const slabs = new GeoBuilder();
-    const frames = new GeoBuilder();
-    const vents = new GeoBuilder();
+    const slabs = new ChunkedGeo();
+    const frames = new ChunkedGeo();
+    const vents = new ChunkedGeo();
     const dummy = new THREE.Object3D();
 
-    const plaqueMesh = new THREE.InstancedMesh(
-      new THREE.PlaneGeometry(0.085, 0.108),
-      new THREE.MeshStandardMaterial({
-        map: makeDoorPlaqueTexture(this.seed),
-        roughness: 0.72,
-      }),
-      n,
-    );
+    const plaqueGeo = new THREE.PlaneGeometry(0.085, 0.108);
+    const plaqueMat = new THREE.MeshStandardMaterial({
+      map: makeDoorPlaqueTexture(this.seed),
+      roughness: 0.72,
+    });
 
     // Brushed steel furniture: the fixed centre knob of a security door and
     // the lock cylinder beside it. Turned profiles, not boxes — they are the
@@ -1024,14 +1126,17 @@ export class Level {
       new THREE.Vector2(0.017, 0.049),
       new THREE.Vector2(0.0, 0.051),
     ];
-    const knobMesh = new THREE.InstancedMesh(
-      new THREE.LatheGeometry(knobProfile, 12), steelMat, n,
-    );
-    const cylinderMesh = new THREE.InstancedMesh(
-      new THREE.CylinderGeometry(0.018, 0.018, 0.013, 12), steelMat, n,
-    );
+    // 8 radial segments, not 12: the knob is 7cm across and you only ever see
+    // it from arm's length. Multiplied by the ~1,200 of them in the building,
+    // the segments you can't see were the single largest triangle bill here.
+    const knobGeo = new THREE.LatheGeometry(knobProfile, 8);
+    const cylGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.013, 8);
 
-    this.doorSpots.forEach((spot, i) => {
+    const knobs = new ChunkedInstances();
+    const cylinders = new ChunkedInstances();
+    const plaques = new ChunkedInstances();
+
+    this.doorSpots.forEach((spot) => {
       const { x: nx, z: nz } = spot.normal;
       // Screen-right along the wall when you stand facing the door.
       const tx = nz, tz = -nx;
@@ -1087,18 +1192,18 @@ export class Level {
       dummy.position.set(kp[0], 1.0, kp[2]);
       dummy.rotation.set(Math.PI / 2, yaw, 0, "YXZ");
       dummy.updateMatrix();
-      knobMesh.setMatrixAt(i, dummy.matrix);
+      knobs.add(spot.pos.x, spot.pos.z, dummy.matrix);
       const cp = at(-side * 0.27, 0, EPS + 0.007);
       dummy.position.set(cp[0], 1.0, cp[2]);
       dummy.updateMatrix();
-      cylinderMesh.setMatrixAt(i, dummy.matrix);
+      cylinders.add(spot.pos.x, spot.pos.z, dummy.matrix);
 
       // Letter plate, screwed to the plaster beside the frame.
       const pp = at(side * (HW + FB + 0.13), 0, 0.005);
       dummy.position.set(pp[0], 1.62, pp[2]);
       dummy.rotation.set(0, Math.atan2(nx, nz), 0, "YXZ");
       dummy.updateMatrix();
-      plaqueMesh.setMatrixAt(i, dummy.matrix);
+      plaques.add(spot.pos.x, spot.pos.z, dummy.matrix);
 
       // Some flats vent their hallway over the door.
       if (this.rng() < 0.32) {
@@ -1125,46 +1230,42 @@ export class Level {
       }
     });
 
-    plaqueMesh.instanceMatrix.needsUpdate = true;
-    knobMesh.instanceMatrix.needsUpdate = true;
-    cylinderMesh.instanceMatrix.needsUpdate = true;
-
-    const slabMesh = new THREE.Mesh(
-      slabs.build(),
-      new THREE.MeshStandardMaterial({
-        map: makeDoorAtlasTexture(this.seed),
-        roughness: 0.44, // sprayed lacquer — a soft sheen, no gloss
-        metalness: 0.04,
-      }),
-    );
-    slabMesh.receiveShadow = true;
-
+    const slabMat = new THREE.MeshStandardMaterial({
+      map: makeDoorAtlasTexture(this.seed),
+      roughness: 0.44, // sprayed lacquer — a soft sheen, no gloss
+      metalness: 0.04,
+    });
     const trim = makeTrimMaps(this.seed);
-    const frameMesh = new THREE.Mesh(
-      frames.build(),
-      new THREE.MeshStandardMaterial({
-        map: trim.map,
-        normalMap: trim.normalMap,
-        roughnessMap: trim.roughnessMap,
-        normalScale: new THREE.Vector2(0.9, 0.9), // the flutes live here
-      }),
-    );
-    frameMesh.castShadow = true;
-    frameMesh.receiveShadow = true;
+    const frameMat = new THREE.MeshStandardMaterial({
+      map: trim.map,
+      normalMap: trim.normalMap,
+      roughnessMap: trim.roughnessMap,
+      normalScale: new THREE.Vector2(0.9, 0.9), // the flutes live here
+    });
 
-    this.group.add(slabMesh, frameMesh, knobMesh, cylinderMesh, plaqueMesh);
+    for (const m of slabs.meshes(slabMat, (m) => { m.receiveShadow = true; })) {
+      this.group.add(m);
+    }
+    // The architraves are the heaviest geometry in the building by a wide
+    // margin — chunking them is what keeps them off the GPU when they're
+    // behind you.
+    for (const m of frames.meshes(frameMat, (m) => {
+      m.castShadow = true;
+      m.receiveShadow = true;
+    })) {
+      this.group.add(m);
+    }
+    for (const m of knobs.meshes(knobGeo, steelMat)) this.group.add(m);
+    for (const m of cylinders.meshes(cylGeo, steelMat)) this.group.add(m);
+    for (const m of plaques.meshes(plaqueGeo, plaqueMat)) this.group.add(m);
 
-    if (vents.idx.length > 0) {
-      this.group.add(
-        new THREE.Mesh(
-          vents.build(),
-          new THREE.MeshStandardMaterial({
-            map: makeVentGrilleTexture(),
-            roughness: 0.7,
-            metalness: 0.2,
-          }),
-        ),
-      );
+    if (!vents.isEmpty) {
+      const ventMat = new THREE.MeshStandardMaterial({
+        map: makeVentGrilleTexture(),
+        roughness: 0.7,
+        metalness: 0.2,
+      });
+      for (const m of vents.meshes(ventMat)) this.group.add(m);
     }
   }
 
@@ -1174,7 +1275,7 @@ export class Level {
    * with its own small texture. The notices (walls and doors alike) merge
    * into the single geometry handed in from build().
    */
-  private buildFittings(notices: GeoBuilder) {
+  private buildFittings(notices: ChunkedGeo) {
     const dummy = new THREE.Object3D();
     const byKind = (k: string) => this.fittingSpots.filter((f) => f.kind === k);
     const hoses = byKind("hose");
@@ -1274,16 +1375,12 @@ export class Level {
       );
     }
 
-    if (notices.idx.length > 0) {
-      this.group.add(
-        new THREE.Mesh(
-          notices.build(),
-          new THREE.MeshStandardMaterial({
-            map: makeNoticeAtlasTexture(this.seed),
-            roughness: 0.9,
-          }),
-        ),
-      );
+    if (!notices.isEmpty) {
+      const noticeMat = new THREE.MeshStandardMaterial({
+        map: makeNoticeAtlasTexture(this.seed),
+        roughness: 0.9,
+      });
+      for (const m of notices.meshes(noticeMat)) this.group.add(m);
     }
   }
 
