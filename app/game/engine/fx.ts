@@ -107,9 +107,9 @@ export class GameFX {
 
     this.bloom = new UnrealBloomPass(
       new THREE.Vector2(width / 2, height / 2),
-      0.55, // strength — restrained; we want glow, not glamour
+      0.5, // strength — restrained; we want glow, not glamour
       0.55,
-      0.82,
+      0.95, // threshold: only the tubes and signs bloom, never lit plaster
     );
     this.composer.addPass(this.bloom);
 

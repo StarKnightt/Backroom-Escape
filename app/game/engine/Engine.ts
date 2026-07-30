@@ -147,7 +147,10 @@ export class Engine {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.2;
+    // Held down deliberately: at 1.2 the plaster and the honey doors both
+    // clipped to white under every batten, and the corridor lost the colour
+    // that makes it read as a building.
+    this.renderer.toneMappingExposure = 1.02;
 
     const fogColor = new THREE.Color(0x100c07);
     this.scene.background = fogColor;

@@ -159,8 +159,9 @@ export function makeWallMaps(seed: number): PBRMaps {
         const t = fromBottom / skirtPx;
         const wood = n1.noise(x * 0.6, y * 0.06); // long horizontal grain
         const wood2 = n2.fbm(x * 0.03, y * 0.2, 3);
-        const k = 0.82 + wood * 0.22 + wood2 * 0.16;
-        r = 150 * k; g = 92 * k; b = 45 * k;
+        // same honey lacquer as the door frames it runs into
+        const k = 0.84 + wood * 0.18 + wood2 * 0.14;
+        r = 182 * k; g = 134 * k; b = 62 * k;
         if (t > 0.9) { r *= 1.16; g *= 1.16; b *= 1.14; } // moulded top edge
         if (t < 0.12) { r *= 0.6; g *= 0.6; b *= 0.6; } // dust line at the floor
       }
@@ -466,27 +467,32 @@ export function makeDoorAtlasTexture(seed: number): THREE.CanvasTexture {
   const n = new ValueNoise(seed + 92);
   const { canvas, ctx } = makeCanvas(W, H);
 
-  // Timber tones: mahogany, sapele, a paler oak, a dark walnut.
+  // Honey-lacquered flush doors. Every flat in the block got the same one;
+  // the variants differ only in how the varnish has aged.
   const TONES: [number, number, number][] = [
-    [126, 62, 34],
-    [142, 74, 38],
-    [150, 96, 52],
-    [96, 50, 30],
+    [198, 148, 70],
+    [190, 140, 64],
+    [206, 156, 80],
+    [182, 133, 58],
   ];
 
   for (let v = 0; v < DOOR_VARIANTS; v++) {
     const ox = v * DW;
     const [br, bg, bb] = TONES[v % TONES.length];
 
-    // --- grain: vertical, with a few knots and wandering rings
+    // --- flush face: sprayed lacquer over veneer. Almost no figure — just
+    // a faint vertical streak from the spray gun and a very soft blotching.
     const img = ctx.createImageData(DW, DH);
     for (let y = 0; y < DH; y++) {
       for (let x = 0; x < DW; x++) {
         const i = (y * DW + x) * 4;
-        const wander = n.fbm(x * 0.01 + v * 40, y * 0.004, 3) * 26;
-        const rings = Math.sin((x + wander) * 0.55) * 0.5 + 0.5;
-        const fine = n.noise(x * 1.4 + v * 13, y * 0.06);
-        const k = 0.85 + rings * 0.09 + fine * 0.1;
+        const streak = n.noise(x * 0.22 + v * 71, y * 0.01) * 0.028;
+        const blotch = n.fbm(x * 0.006 + v * 40, y * 0.004, 3) * 0.09;
+        // Nothing breaks the face of a flush leaf — only the outermost
+        // pixels darken, where the lacquer rolls over the edge.
+        const e = Math.min(x, DW - 1 - x, y, DH - 1 - y);
+        const edge = e < 3 ? 0.93 + e * 0.023 : 1;
+        const k = (0.95 + streak + blotch) * edge;
         img.data[i] = br * k;
         img.data[i + 1] = bg * k;
         img.data[i + 2] = bb * k;
@@ -495,93 +501,44 @@ export function makeDoorAtlasTexture(seed: number): THREE.CanvasTexture {
     }
     ctx.putImageData(img, ox, 0);
 
-    // --- two sunken panels with mitred bevels
-    const panels: [number, number, number, number][] = [
-      [34, 34, DW - 68, DH * 0.36],
-      [34, DH * 0.46, DW - 68, DH * 0.46],
-    ];
-    for (const [px, py, pw, ph] of panels) {
-      ctx.save();
-      ctx.translate(ox, 0);
-      // sunken face: slightly darker
-      ctx.fillStyle = "rgba(0,0,0,0.13)";
-      ctx.fillRect(px + 9, py + 9, pw - 18, ph - 18);
-      // bevel: lit on top-left, shadowed bottom-right (tubes are overhead)
-      ctx.strokeStyle = "rgba(255,225,180,0.16)";
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.moveTo(px, py + ph);
-      ctx.lineTo(px, py);
-      ctx.lineTo(px + pw, py);
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(0,0,0,0.4)";
-      ctx.beginPath();
-      ctx.moveTo(px + pw, py);
-      ctx.lineTo(px + pw, py + ph);
-      ctx.lineTo(px, py + ph);
-      ctx.stroke();
-      // inner shadow line where the panel drops away
-      ctx.strokeStyle = "rgba(0,0,0,0.35)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(px + 9, py + 9, pw - 18, ph - 18);
-      ctx.restore();
-    }
+    // --- the shadow each piece of steel casts on the leaf. The knob and the
+    // lock cylinder themselves are real geometry (level.ts).
+    const cx = ox + DW * (v % 2 === 0 ? 0.54 : 0.46);
+    const lx = ox + DW * (v % 2 === 0 ? 0.17 : 0.83);
+    const hy = DH * 0.505;
+    const ring = (x: number, y: number, r: number, a: number) => {
+      const g = ctx.createRadialGradient(x, y + r * 0.25, r * 0.3, x, y + r * 0.3, r);
+      g.addColorStop(0, `rgba(40,22,8,${a})`);
+      g.addColorStop(1, "rgba(40,22,8,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2.2);
+    };
+    ring(cx, hy, 26, 0.24);
+    ring(lx, hy, 13, 0.2);
 
-    // --- escutcheon + keyhole. The lever itself is real geometry (level.ts),
-    // so all that belongs here is the plate it screws through and its shadow.
-    const hx = ox + (v % 2 === 0 ? DW - 46 : 46);
-    const hy = DH * 0.5;
-    ctx.fillStyle = "rgba(0,0,0,0.4)";
-    ctx.beginPath();
-    ctx.ellipse(hx + 3, hy + 5, 15, 22, 0, 0, 7);
-    ctx.fill();
-    ctx.fillStyle = "#8d7233";
-    ctx.beginPath();
-    ctx.ellipse(hx, hy, 14, 21, 0, 0, 7);
-    ctx.fill();
-    ctx.fillStyle = "#b09246";
-    ctx.beginPath();
-    ctx.ellipse(hx - 3, hy - 4, 9, 14, 0, 0, 7);
-    ctx.fill();
-    // keyhole below
-    ctx.fillStyle = "rgba(20,12,6,0.85)";
-    ctx.beginPath();
-    ctx.ellipse(hx, hy + 44, 5, 6, 0, 0, 7);
-    ctx.fill();
-    ctx.fillRect(hx - 2, hy + 46, 4, 11);
-
-    // --- the flat number, screwed on and never straightened
-    ctx.save();
-    ctx.translate(ox + DW * 0.5, DH * 0.235);
-    ctx.rotate(randRange(rng, -0.05, 0.05));
-    ctx.fillStyle = "rgba(24,16,8,0.6)";
-    ctx.font = "bold 40px Georgia, serif";
-    ctx.textAlign = "center";
-    ctx.fillText(`${1 + v}º`, 2, 2);
-    ctx.fillStyle = "#a68d5c";
-    ctx.fillText(`${1 + v}º`, 0, 0);
-    ctx.restore();
-
-    // --- wear: kicked bottom rail, grime around the handle
-    const kick = ctx.createLinearGradient(0, DH, 0, DH - 70);
-    kick.addColorStop(0, "rgba(24,14,8,0.5)");
-    kick.addColorStop(1, "rgba(24,14,8,0)");
-    ctx.fillStyle = kick;
-    ctx.fillRect(ox, DH - 70, DW, 70);
-    const grime = ctx.createRadialGradient(hx, hy, 8, hx, hy, 80);
-    grime.addColorStop(0, "rgba(18,10,4,0.4)");
-    grime.addColorStop(1, "rgba(18,10,4,0)");
+    // --- decades of hands: a dulled halo where everyone grabs the knob
+    const grime = ctx.createRadialGradient(cx, hy, 12, cx, hy, 74);
+    grime.addColorStop(0, "rgba(24,14,4,0.16)");
+    grime.addColorStop(1, "rgba(24,14,4,0)");
     ctx.fillStyle = grime;
-    ctx.fillRect(hx - 90, hy - 90, 180, 180);
+    ctx.fillRect(cx - 80, hy - 80, 160, 160);
 
-    // --- scratches
-    ctx.strokeStyle = "rgba(30,18,10,0.4)";
-    for (let s = 0; s < 16; s++) {
-      ctx.lineWidth = randRange(rng, 0.4, 1.6);
-      const sx = ox + rng() * DW, sy = rng() * DH;
+    // --- kicked bottom edge and a dust line where the leaf meets the sill
+    const kick = ctx.createLinearGradient(0, DH, 0, DH - 58);
+    kick.addColorStop(0, "rgba(30,18,6,0.4)");
+    kick.addColorStop(1, "rgba(30,18,6,0)");
+    ctx.fillStyle = kick;
+    ctx.fillRect(ox, DH - 58, DW, 58);
+
+    // --- scratches, mostly low where bags and prams hit it
+    ctx.strokeStyle = "rgba(70,44,16,0.3)";
+    for (let s = 0; s < 14; s++) {
+      ctx.lineWidth = randRange(rng, 0.4, 1.4);
+      const sx = ox + rng() * DW;
+      const sy = randRange(rng, DH * 0.45, DH);
       ctx.beginPath();
       ctx.moveTo(sx, sy);
-      ctx.lineTo(sx + randRange(rng, -30, 30), sy + randRange(rng, -40, 40));
+      ctx.lineTo(sx + randRange(rng, -34, 34), sy + randRange(rng, -14, 14));
       ctx.stroke();
     }
   }
@@ -835,33 +792,72 @@ export function makeNoticeAtlasTexture(seed: number): THREE.CanvasTexture {
 }
 
 /** Varnished timber for the door architraves. */
+/**
+ * Architrave stock, in the same honey lacquer as the doors, with the three
+ * routed flutes these frames always carry near their outer edge.
+ *
+ * U runs ACROSS the board (0 = inner edge beside the leaf, 1 = outer edge
+ * against the plaster) and is normalised by the mesh, so the flutes land in
+ * the same place whatever the board's width. V runs along its length and
+ * tiles, so the grain never repeats visibly on a 2m jamb.
+ */
 export function makeTrimMaps(seed: number): PBRMaps {
-  const S = 256; // tiles over 0.5m
+  const W = 128; // across the board
+  const H = 512; // along it — tiles every metre
   const n = new ValueNoise(seed + 101);
-  const { canvas, ctx } = makeCanvas(S, S);
-  const img = ctx.createImageData(S, S);
-  const height = new Float32Array(S * S);
-  const rough = new Float32Array(S * S);
-  for (let y = 0; y < S; y++) {
-    for (let x = 0; x < S; x++) {
-      const i = y * S + x;
-      const wander = n.fbm(x * 0.02, y * 0.006, 3) * 22;
-      const rings = Math.sin((x + wander) * 0.4) * 0.5 + 0.5;
-      const fine = n.noise(x * 1.2, y * 0.08);
-      const k = 0.8 + rings * 0.2 + fine * 0.12;
-      img.data[i * 4] = 138 * k;
-      img.data[i * 4 + 1] = 96 * k;
-      img.data[i * 4 + 2] = 58 * k;
+  const { canvas, ctx } = makeCanvas(W, H);
+  const img = ctx.createImageData(W, H);
+  const height = new Float32Array(W * H);
+  const rough = new Float32Array(W * H);
+
+  // Flute centres in U, and their half-width. Three fine grooves, grouped
+  // toward the outer edge exactly as the reference frames have them.
+  const FLUTES = [0.66, 0.755, 0.85];
+  const FLUTE_HW = 0.019;
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      const u = x / (W - 1);
+
+      const streak = n.noise(x * 0.3, y * 0.02) * 0.05;
+      const blotch = n.fbm(x * 0.02, y * 0.005, 3) * 0.08;
+      let k = 0.94 + streak + blotch;
+      let h = 0.62 + blotch * 0.3;
+
+      // The flutes: a rounded groove, its far lip catching the corridor light.
+      for (const f of FLUTES) {
+        const d = Math.abs(u - f) / FLUTE_HW;
+        if (d >= 1.4) continue;
+        if (d < 1) {
+          const depth = Math.cos((d * Math.PI) / 2); // 1 at centre, 0 at lip
+          k *= 1 - depth * 0.42;
+          h -= depth * 0.4;
+        } else {
+          // the raised lip either side reads brighter than the flat
+          k *= 1 + (1.4 - d) * 0.12;
+          h += (1.4 - d) * 0.05;
+        }
+      }
+
+      // The board's own edges: a hair darker where the profile turns away.
+      if (u < 0.035) { k *= 0.86; h -= 0.2; }
+      if (u > 0.972) { k *= 0.9; h -= 0.15; }
+
+      img.data[i * 4] = 192 * k;
+      img.data[i * 4 + 1] = 142 * k;
+      img.data[i * 4 + 2] = 66 * k;
       img.data[i * 4 + 3] = 255;
-      height[i] = rings * 0.5 + fine * 0.3;
-      rough[i] = 0.38 + rings * 0.14; // varnish
+      height[i] = h;
+      rough[i] = 0.34 + blotch * 0.2; // lacquer, dulled by dusting
     }
   }
   ctx.putImageData(img, 0, 0);
+
   return {
     map: tex(canvas, { srgb: true }),
-    normalMap: tex(normalFromHeight(height, S, S, 0.5)),
-    roughnessMap: tex(grayCanvas(rough, S, S)),
+    normalMap: tex(normalFromHeight(height, W, H, 1.6)),
+    roughnessMap: tex(grayCanvas(rough, W, H)),
   };
 }
 

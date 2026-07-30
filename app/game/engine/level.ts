@@ -119,6 +119,57 @@ class GeoBuilder {
     );
   }
 
+  /**
+   * A length of moulded board (architrave, skirting…). Unlike `box`, the U
+   * coordinate is normalised ACROSS the board and V runs along its length,
+   * so a profile painted into the texture — flutes, beads — lands correctly
+   * whichever way the board runs. `flipU` mirrors it, which is what the two
+   * jambs of a door frame need so their flutes both face outward.
+   *
+   * Axes are indices: 0 = x, 1 = y, 2 = z.
+   */
+  boardBox(
+    center: [number, number, number],
+    half: [number, number, number],
+    lengthAxis: 0 | 1 | 2,
+    widthAxis: 0 | 1 | 2,
+    vScale = 1,
+    flipU = false,
+  ) {
+    const thickAxis = (3 - lengthAxis - widthAxis) as 0 | 1 | 2;
+    const lo = [center[0] - half[0], center[1] - half[1], center[2] - half[2]];
+    const size = [half[0] * 2, half[1] * 2, half[2] * 2];
+    const frac = (p: number[], axis: number) =>
+      size[axis] < 1e-6 ? 0 : (p[axis] - lo[axis]) / size[axis];
+
+    const uvFor = (p: number[], nAxis: number): [number, number] => {
+      if (nAxis === widthAxis) {
+        // The narrow return face — park it on a flat, flute-free strip.
+        return [0.04 + frac(p, thickAxis) * 0.06, p[lengthAxis] * vScale];
+      }
+      const u = flipU ? 1 - frac(p, widthAxis) : frac(p, widthAxis);
+      // End caps read the profile too; everything else is the face.
+      return [u, (nAxis === lengthAxis ? p[thickAxis] : p[lengthAxis]) * vScale];
+    };
+
+    const [x0, y0, z0] = lo;
+    const x1 = x0 + size[0], y1 = y0 + size[1], z1 = z0 + size[2];
+    const faces: { c: number[][]; n: number[]; a: number }[] = [
+      { c: [[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]], n: [1, 0, 0], a: 0 },
+      { c: [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], n: [-1, 0, 0], a: 0 },
+      { c: [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], n: [0, 0, 1], a: 2 },
+      { c: [[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]], n: [0, 0, -1], a: 2 },
+      { c: [[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]], n: [0, 1, 0], a: 1 },
+      { c: [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], n: [0, -1, 0], a: 1 },
+    ];
+    for (const f of faces) {
+      this.quad(
+        f.c[0], f.c[1], f.c[2], f.c[3], f.n,
+        f.c.map((p) => uvFor(p, f.a)) as [number, number][],
+      );
+    }
+  }
+
   build(): THREE.BufferGeometry {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(this.pos, 3));
@@ -936,15 +987,14 @@ export class Level {
     if (this.doorSpots.length === 0) return;
     const n = this.doorSpots.length;
 
-    const HW = 0.5; // door half width
-    const DH = 2.06; // door height
-    const FB = 0.1; // architrave board width
-    const FT = 0.028; // architrave half thickness — how far it stands proud
-    const EPS = 0.008; // slab sits just off the plaster
+    const HW = 0.42; // door half width — 84cm leaf
+    const DH = 2.03; // door height
+    const FB = 0.15; // architrave board width — these frames are broad
+    const FT = 0.032; // architrave half thickness — how far it stands proud
+    const EPS = 0.008; // leaf sits just off the plaster, deep in its reveal
 
     const slabs = new GeoBuilder();
     const frames = new GeoBuilder();
-    const brass = new GeoBuilder();
     const vents = new GeoBuilder();
     const dummy = new THREE.Object3D();
 
@@ -955,6 +1005,30 @@ export class Level {
         roughness: 0.72,
       }),
       n,
+    );
+
+    // Brushed steel furniture: the fixed centre knob of a security door and
+    // the lock cylinder beside it. Turned profiles, not boxes — they are the
+    // only thing on the leaf that catches the torch.
+    const steelMat = new THREE.MeshStandardMaterial({
+      color: 0xa8aca8,
+      roughness: 0.33,
+      metalness: 0.9,
+    });
+    const knobProfile = [
+      new THREE.Vector2(0.013, 0),
+      new THREE.Vector2(0.015, 0.011),
+      new THREE.Vector2(0.033, 0.021),
+      new THREE.Vector2(0.036, 0.031),
+      new THREE.Vector2(0.030, 0.042),
+      new THREE.Vector2(0.017, 0.049),
+      new THREE.Vector2(0.0, 0.051),
+    ];
+    const knobMesh = new THREE.InstancedMesh(
+      new THREE.LatheGeometry(knobProfile, 12), steelMat, n,
+    );
+    const cylinderMesh = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(0.018, 0.018, 0.013, 12), steelMat, n,
     );
 
     this.doorSpots.forEach((spot, i) => {
@@ -975,29 +1049,49 @@ export class Level {
         [[u0, 0], [u1, 0], [u1, 1], [u0, 1]],
       );
 
-      // Architrave: two jambs and a lintel, standing proud of the wall.
-      const half = (alongT: number, alongN: number) => ({
-        hx: Math.abs(tx) * alongT + Math.abs(nx) * alongN,
-        hz: Math.abs(tz) * alongT + Math.abs(nz) * alongN,
-      });
-      const jamb = half(FB / 2, FT);
-      for (const side of [-1, 1]) {
+      // Architrave: two fluted jambs and a lintel, standing proud of the
+      // wall. `lateralAxis` is whichever world axis runs along this wall.
+      const lateralAxis: 0 | 2 = nx !== 0 ? 2 : 0;
+      const halfXZ = (alongT: number, alongN: number): [number, number] => [
+        Math.abs(tx) * alongT + Math.abs(nx) * alongN,
+        Math.abs(tz) * alongT + Math.abs(nz) * alongN,
+      ];
+      // U runs along +lateralAxis in world space; the flutes must end up on
+      // the outer edge of BOTH jambs, so mirror the one whose outward
+      // direction runs against that axis.
+      const tAlongAxis = lateralAxis === 0 ? tx : tz;
+      for (const side of [-1, 1] as const) {
         const c = at(side * (HW + FB / 2), 0, FT);
-        frames.box(c[0], (DH + FB) / 2, c[2], jamb.hx, (DH + FB) / 2, jamb.hz, 2);
+        const [hx, hz] = halfXZ(FB / 2, FT);
+        frames.boardBox(
+          [c[0], (DH + FB) / 2, c[2]],
+          [hx, (DH + FB) / 2, hz],
+          1, lateralAxis, 1,
+          side * tAlongAxis > 0,
+        );
       }
-      const lint = half(HW + FB, FT);
       const lc = at(0, 0, FT);
-      frames.box(lc[0], DH + FB / 2, lc[2], lint.hx, FB / 2, lint.hz, 2);
+      const [lhx, lhz] = halfXZ(HW + FB, FT);
+      // Lintel: U runs up the board, so the flutes sit along its top edge.
+      frames.boardBox(
+        [lc[0], DH + FB / 2, lc[2]],
+        [lhx, FB / 2, lhz],
+        lateralAxis, 1, 1,
+      );
 
-      // Lever handle: a stub through the escutcheon and a bar turned back
-      // toward the middle of the door, the way every one of these sits.
+      // Furniture: fixed knob near the middle of the leaf, lock cylinder off
+      // to the side — a Spanish security door, no lever at all.
       const side = spot.variant % 2 === 0 ? 1 : -1;
-      const stubT = half(0.022, 0.028);
-      const sc = at(side * 0.32, 0, EPS + 0.028);
-      brass.box(sc[0], 1.02, sc[2], stubT.hx, 0.022, stubT.hz, 4);
-      const barT = half(0.058, 0.011);
-      const bc = at(side * 0.32 - side * 0.052, 0, EPS + 0.067);
-      brass.box(bc[0], 1.0, bc[2], barT.hx, 0.013, barT.hz, 4);
+      const yaw = Math.atan2(nx, nz);
+      const kp = at(side * 0.03, 0, EPS + 0.002);
+      dummy.position.set(kp[0], 1.0, kp[2]);
+      dummy.rotation.set(Math.PI / 2, yaw, 0, "YXZ");
+      dummy.updateMatrix();
+      knobMesh.setMatrixAt(i, dummy.matrix);
+      const cp = at(-side * 0.27, 0, EPS + 0.007);
+      dummy.position.set(cp[0], 1.0, cp[2]);
+      dummy.updateMatrix();
+      cylinderMesh.setMatrixAt(i, dummy.matrix);
 
       // Letter plate, screwed to the plaster beside the frame.
       const pp = at(side * (HW + FB + 0.13), 0, 0.005);
@@ -1032,13 +1126,15 @@ export class Level {
     });
 
     plaqueMesh.instanceMatrix.needsUpdate = true;
+    knobMesh.instanceMatrix.needsUpdate = true;
+    cylinderMesh.instanceMatrix.needsUpdate = true;
 
     const slabMesh = new THREE.Mesh(
       slabs.build(),
       new THREE.MeshStandardMaterial({
         map: makeDoorAtlasTexture(this.seed),
-        roughness: 0.58, // varnish, long dulled
-        metalness: 0.05,
+        roughness: 0.44, // sprayed lacquer — a soft sheen, no gloss
+        metalness: 0.04,
       }),
     );
     slabMesh.receiveShadow = true;
@@ -1050,18 +1146,13 @@ export class Level {
         map: trim.map,
         normalMap: trim.normalMap,
         roughnessMap: trim.roughnessMap,
-        normalScale: new THREE.Vector2(0.4, 0.4),
+        normalScale: new THREE.Vector2(0.9, 0.9), // the flutes live here
       }),
     );
     frameMesh.castShadow = true;
     frameMesh.receiveShadow = true;
 
-    const brassMesh = new THREE.Mesh(
-      brass.build(),
-      new THREE.MeshStandardMaterial({ color: 0x9c7f3c, roughness: 0.38, metalness: 0.8 }),
-    );
-
-    this.group.add(slabMesh, frameMesh, brassMesh, plaqueMesh);
+    this.group.add(slabMesh, frameMesh, knobMesh, cylinderMesh, plaqueMesh);
 
     if (vents.idx.length > 0) {
       this.group.add(
