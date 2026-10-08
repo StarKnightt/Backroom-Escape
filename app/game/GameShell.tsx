@@ -98,6 +98,12 @@ export default function GameShell() {
     }
   }, []);
 
+  // Reveal on mount: the menu shows its own loading state, and engine boot waits on a
+  // frame the host may throttle while its loading screen covers the game.
+  useEffect(() => {
+    wavedash.ready();
+  }, []);
+
   // Page text fades out on its own.
   useEffect(() => {
     if (!pageLines) return;
