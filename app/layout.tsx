@@ -29,7 +29,11 @@ export const metadata: Metadata = {
   description:
     "Play the Backrooms free in your browser. First-person horror in a procedurally generated maze — find the 8 pages, escape Level 0, don't let it hear you walk. No download.",
   applicationName: "Backrooms: Level 0",
-  authors: [{ name: "StarKnightt", url: "https://github.com/StarKnightt" }],
+  // No author URL in the CG build — keeps every external link out of the bundle.
+  authors:
+    process.env.CG_EXPORT === "1"
+      ? [{ name: "StarKnightt" }]
+      : [{ name: "StarKnightt", url: "https://github.com/StarKnightt" }],
   creator: "StarKnightt",
   keywords: [
     "backrooms game",
@@ -56,8 +60,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    site: "@Star_Knight12",
-    creator: "@Star_Knight12",
+    site: "@prasenx",
+    creator: "@prasenx",
     title: "Backrooms: Level 0 — Free Browser Horror Game",
     description:
       "You noclipped out of reality. Find the 8 pages, escape the maze, don't let it hear you walk.",
@@ -102,7 +106,7 @@ const jsonLd = {
     "@type": "Person",
     name: "StarKnightt",
     url: "https://github.com/StarKnightt",
-    sameAs: ["https://x.com/Star_Knight12", "https://github.com/StarKnightt"],
+    sameAs: ["https://x.com/prasenx", "https://github.com/StarKnightt"],
   },
 };
 
@@ -114,12 +118,16 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${specialElite.variable} h-full antialiased`}>
       <body className="h-full overflow-hidden bg-black text-zinc-200">
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
-          }}
-        />
+        {/* SEO structured data — Vercel-only; useless inside the CG iframe
+            and it carries external profile URLs their QA could flag */}
+        {process.env.CG_EXPORT !== "1" && (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
+            }}
+          />
+        )}
         {children}
         {/* Vercel-only — the CrazyGames bundle would just spam 404s */}
         {process.env.CG_EXPORT !== "1" && <Analytics />}

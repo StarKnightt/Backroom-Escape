@@ -14,6 +14,11 @@ import Minimap from "./Minimap";
 
 const GameCanvas = dynamic(() => import("./GameCanvas"), { ssr: false });
 
+// CrazyGames forbids external links / cross-promotion in submitted games
+// (their QA rejects builds containing them). Build-time constant, so the
+// badges are dead-code-eliminated from the CG bundle.
+const IS_CG = process.env.NEXT_PUBLIC_CG_EXPORT === "1";
+
 const INITIAL_HUD: HudState = {
   pages: 0,
   totalPages: 8,
@@ -281,10 +286,12 @@ export default function GameShell() {
                   built with three.js · next.js · webaudio
                 </p>
               </div>
-              <div className="mt-7 flex items-center gap-8">
-                <GitHubBadge />
-                <XBadge />
-              </div>
+              {!IS_CG && (
+                <div className="mt-7 flex items-center gap-8">
+                  <GitHubBadge />
+                  <XBadge />
+                </div>
+              )}
               <ArmedButton
                 onClick={() => setShowCredits(false)}
                 className="font-elite mt-10 border border-amber-100/30 px-10 py-2.5 text-sm tracking-[0.4em] text-amber-100/70 transition-all hover:border-amber-100/80 hover:bg-amber-100/5"
@@ -379,10 +386,12 @@ export default function GameShell() {
           <p className="font-elite mt-3 text-[10px] tracking-[0.25em] text-amber-100/20">
             THE RUN IS LOST. THE PAGES STAY.
           </p>
-          <div className="mt-8 flex items-center gap-8">
-            <GitHubBadge />
-            <XBadge />
-          </div>
+          {!IS_CG && (
+            <div className="mt-8 flex items-center gap-8">
+              <GitHubBadge />
+              <XBadge />
+            </div>
+          )}
         </Overlay>
       )}
 
@@ -425,7 +434,9 @@ export default function GameShell() {
           >
             GO BACK IN
           </ArmedButton>
-          <GitHubBadge className="mt-8" label="escaped? leave a star" />
+          {!IS_CG && (
+            <GitHubBadge className="mt-8" label="escaped? leave a star" />
+          )}
         </Overlay>
       )}
     </div>
@@ -488,14 +499,14 @@ function GitHubBadge({
 
 function XBadge({
   className = "",
-  label = "@Star_Knight12",
+  label = "@prasenx",
 }: {
   className?: string;
   label?: string;
 }) {
   return (
     <a
-      href="https://x.com/Star_Knight12"
+      href="https://x.com/prasenx"
       target="_blank"
       rel="noopener noreferrer"
       className={`font-elite group flex items-center gap-2 text-[11px] tracking-[0.2em] text-amber-100/30 transition-all hover:text-amber-100/80 hover:[text-shadow:0_0_14px_rgba(255,220,140,0.4)] ${className}`}

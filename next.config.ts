@@ -6,6 +6,9 @@ import type { NextConfig } from "next";
 const cgExport = process.env.CG_EXPORT === "1";
 
 const nextConfig: NextConfig = {
+  // Inlined into the client bundle — lets UI strip portal-forbidden content
+  // (external links / cross-promotion) from the CrazyGames build.
+  env: { NEXT_PUBLIC_CG_EXPORT: cgExport ? "1" : "" },
   ...(cgExport && {
     output: "export" as const,
     assetPrefix: "./",
