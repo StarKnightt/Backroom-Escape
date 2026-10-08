@@ -6,6 +6,7 @@ import { GameAudio } from "./audio";
 import { GameFX } from "./fx";
 import { Items, TOTAL_PAGES } from "./items";
 import { randRange } from "./rng";
+import { wavedash } from "../wavedash";
 
 export type GameState = "idle" | "playing" | "paused" | "dying" | "dead" | "won";
 
@@ -498,6 +499,10 @@ export class Engine {
       const lines = this.items.collectPage(hit.index);
       this.audio.pageStinger();
       this.callbacks.onPageText(lines);
+      if (!this.cheats.unlocked) {
+        wavedash.achieve("FIRST_PAGE");
+        if (this.items.allCollected) wavedash.achieve("ALL_PAGES");
+      }
       this.fearSpike = Math.min(1, this.fearSpike + 0.22);
       if (this.items.collected === 1) this.entity.activate();
       this.pushHud(true);
@@ -508,6 +513,7 @@ export class Engine {
       this.fearSpike = Math.max(0, this.fearSpike - 0.5);
       this.fear = Math.max(0, this.fear - 0.3);
       this.audio.drink();
+      wavedash.achieve("ALMOND_WATER");
       this.toast("STAMINA RESTORED — YOUR HEART SLOWS");
       this.pushHud(true);
     } else if (hit.type === "door" && this.items.allCollected && !this.items.exitOpen) {
@@ -599,6 +605,12 @@ export class Engine {
       if (this.items.exitOpen && Math.hypot(doorDx, doorDz) < 1.05) {
         this.setState("won");
         this.audio.win();
+        if (!this.cheats.unlocked) {
+          const runSeconds = t - this.startedAt;
+          wavedash.submitScore("escape-time", runSeconds * 1000);
+          wavedash.achieve("ESCAPED");
+          if (runSeconds < 600) wavedash.achieve("ESCAPE_UNDER_10");
+        }
         this.callbacks.onStats({
           pages: this.items.collected,
           seconds: Math.floor(t - this.startedAt),

@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { Engine, EngineCallbacks, GameState, HudState, MinimapState } from "./engine/Engine";
 import Minimap from "./Minimap";
+import { wavedash } from "./wavedash";
 
 const GameCanvas = dynamic(() => import("./GameCanvas"), { ssr: false });
 
@@ -90,6 +91,7 @@ export default function GameShell() {
   const handleReady = useCallback((engine: Engine) => {
     engineRef.current = engine;
     setBooted(true);
+    wavedash.ready();
     if (autoStartRef.current) {
       autoStartRef.current = false;
       engine.start();
