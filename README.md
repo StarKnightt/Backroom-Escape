@@ -159,4 +159,4 @@ node scripts/cgtest.mjs    # proves the zip boots when served from a subfolder
 asset paths, so the bundle runs from any CDN subfolder. The Vercel
 deployment is unaffected.
 
-☕ like it? [buy me a coffee](https://buymeacoffee.com/prasenx) or [sponsor on github](https://github.com/sponsors/StarKnightt)
+<a href="https://buymeacoffee.com/prasenx"><img src="https://raw.githubusercontent.com/StarKnightt/StarKnightt/main/assets/support/bmc-button.png" alt="Buy me a coffee" height="40"></a>&nbsp;<a href="https://github.com/sponsors/StarKnightt"><img src="https://raw.githubusercontent.com/StarKnightt/StarKnightt/main/assets/support/github-sponsor.svg" alt="Sponsor on GitHub" height="40"></a>
