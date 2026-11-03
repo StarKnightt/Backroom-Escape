@@ -158,3 +158,5 @@ node scripts/cgtest.mjs    # proves the zip boots when served from a subfolder
 `CG_EXPORT=1` switches the build to a fully static export with relative
 asset paths, so the bundle runs from any CDN subfolder. The Vercel
 deployment is unaffected.
+
+☕ like it? [buy me a coffee](https://buymeacoffee.com/prasenx) or [sponsor on github](https://github.com/sponsors/StarKnightt)
